@@ -12,6 +12,15 @@ package com.blackrook.base.util;
  */
 public final class SerializerUtils
 {
+	/** The size of an int in bytes. */
+	public static final int SIZEOF_INT = Integer.SIZE/Byte.SIZE;
+	/** The size of a byte in bytes (This should always be 1, or Sun screwed up).*/
+	public static final int SIZEOF_BYTE = Byte.SIZE/Byte.SIZE;
+	/** The size of a short in bytes. */
+	public static final int SIZEOF_SHORT = Short.SIZE/Byte.SIZE;
+	/** The size of a long in bytes. */
+	public static final int SIZEOF_LONG = Long.SIZE/Byte.SIZE;
+
 	public static final boolean
 	LITTLE_ENDIAN =	true,
 	BIG_ENDIAN = false;
@@ -27,9 +36,9 @@ public final class SerializerUtils
 	{
 		short out = 0;
 	
-		int stop = Math.min(b.length,BufferUtils.SIZEOF_SHORT);
+		int stop = Math.min(b.length,SIZEOF_SHORT);
 		for (int x = 0; x < stop; x++)
-			out |= (b[x]&0xFF) << Byte.SIZE*(endianMode ? x : BufferUtils.SIZEOF_SHORT-1-x);
+			out |= (b[x]&0xFF) << Byte.SIZE*(endianMode ? x : SIZEOF_SHORT-1-x);
 	
 		return out;
 	}
@@ -43,9 +52,9 @@ public final class SerializerUtils
 	{
 		int out = 0;
 	
-		int stop = Math.min(b.length,BufferUtils.SIZEOF_INT);
+		int stop = Math.min(b.length,SIZEOF_INT);
 		for (int x = 0; x < stop; x++)
-			out |= (b[x]&0xFF) << Byte.SIZE*(endianMode ? x : BufferUtils.SIZEOF_INT-1-x);
+			out |= (b[x]&0xFF) << Byte.SIZE*(endianMode ? x : SIZEOF_INT-1-x);
 	
 		return out;
 	}
@@ -59,9 +68,9 @@ public final class SerializerUtils
 	{
 		long out = 0;
 	
-		int stop = Math.min(b.length,BufferUtils.SIZEOF_LONG);
+		int stop = Math.min(b.length,SIZEOF_LONG);
 		for (int x = 0; x < stop; x++)
-			out |= (long)(b[x]&0xFFL) << (long)(Byte.SIZE*(endianMode ? x : BufferUtils.SIZEOF_LONG-1-x));
+			out |= (long)(b[x]&0xFFL) << (long)(Byte.SIZE*(endianMode ? x : SIZEOF_LONG-1-x));
 	
 		return out;
 	}
@@ -96,9 +105,9 @@ public final class SerializerUtils
 	 */
 	public static int shortToBytes(short s, boolean endianMode, byte[] out, int offset)
 	{
-		for (int x = endianMode ? 0 : BufferUtils.SIZEOF_SHORT-1; endianMode ? (x < BufferUtils.SIZEOF_SHORT) : (x >= 0); x += endianMode ? 1 : -1)
-			out[endianMode ? x : BufferUtils.SIZEOF_SHORT-1 - x] = (byte)((s & (0xFF << Byte.SIZE*x)) >> Byte.SIZE*x); 
-		return offset + BufferUtils.SIZEOF_SHORT;
+		for (int x = endianMode ? 0 : SIZEOF_SHORT-1; endianMode ? (x < SIZEOF_SHORT) : (x >= 0); x += endianMode ? 1 : -1)
+			out[endianMode ? x : SIZEOF_SHORT-1 - x] = (byte)((s & (0xFF << Byte.SIZE*x)) >> Byte.SIZE*x); 
+		return offset + SIZEOF_SHORT;
 	}
 
 	/**
@@ -111,9 +120,9 @@ public final class SerializerUtils
 	 */
 	public static int intToBytes(int i, boolean endianMode, byte[] out, int offset)
 	{
-		for (int x = endianMode ? 0 : BufferUtils.SIZEOF_INT-1; endianMode ? (x < BufferUtils.SIZEOF_INT) : (x >= 0); x += endianMode ? 1 : -1)
-			out[offset + (endianMode ? x : BufferUtils.SIZEOF_INT-1 - x)] = (byte)((i & (0xFF << Byte.SIZE*x)) >> Byte.SIZE*x);
-		return offset + BufferUtils.SIZEOF_INT;
+		for (int x = endianMode ? 0 : SIZEOF_INT-1; endianMode ? (x < SIZEOF_INT) : (x >= 0); x += endianMode ? 1 : -1)
+			out[offset + (endianMode ? x : SIZEOF_INT-1 - x)] = (byte)((i & (0xFF << Byte.SIZE*x)) >> Byte.SIZE*x);
+		return offset + SIZEOF_INT;
 	}
 
 	/**
@@ -126,9 +135,9 @@ public final class SerializerUtils
 	 */
 	public static int longToBytes(long l, boolean endianMode, byte[] out, int offset)
 	{
-		for (int x = endianMode ? 0 : BufferUtils.SIZEOF_LONG-1; endianMode ? (x < BufferUtils.SIZEOF_LONG) : (x >= 0); x += endianMode ? 1 : -1)
-			out[offset + (endianMode ? x : BufferUtils.SIZEOF_LONG-1 - x)] = (byte)((l & (0xFFL << Byte.SIZE*x)) >> Byte.SIZE*x); 
-		return offset + BufferUtils.SIZEOF_LONG;
+		for (int x = endianMode ? 0 : SIZEOF_LONG-1; endianMode ? (x < SIZEOF_LONG) : (x >= 0); x += endianMode ? 1 : -1)
+			out[offset + (endianMode ? x : SIZEOF_LONG-1 - x)] = (byte)((l & (0xFFL << Byte.SIZE*x)) >> Byte.SIZE*x); 
+		return offset + SIZEOF_LONG;
 	}
 
 	/**

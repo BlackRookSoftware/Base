@@ -71,7 +71,7 @@ public final class StringUtils
 	 */
 	public static String urlEscape(String inString)
 	{
-		StringBuffer sb = new StringBuffer();
+		StringBuilder sb = new StringBuilder();
 		for (int i = 0; i < inString.length(); i++)
 		{
 			char c = inString.charAt(i);
@@ -91,7 +91,7 @@ public final class StringUtils
 	 */
 	public static String urlUnescape(String inString)
 	{
-		StringBuffer sb = new StringBuffer();
+		StringBuilder sb = new StringBuilder();
 		char[] chars = new char[2];
 		int x = 0;
 		
@@ -299,8 +299,8 @@ public final class StringUtils
 	{
 		if (width <= 1) return startColumn;
 		
-		StringBuffer token = new StringBuffer();
-		StringBuffer line = new StringBuffer();
+		StringBuilder token = new StringBuilder();
+		StringBuilder line = new StringBuilder();
 		int ln = startColumn;
 		int tok = 0;
 		for (int i = 0; i < message.length(); i++)

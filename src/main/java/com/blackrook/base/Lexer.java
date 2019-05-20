@@ -18,21 +18,22 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Class used for breaking up a stream of characters into lexicographical tokens.
- * Spaces, newlines, tabs, and breaks in the stream are added if desired,
+ * Breaks up a stream of characters into lexicographical tokens.
+ * Spaces, newlines, tabs, comments, and breaks in the stream are added if desired,
  * otherwise, they are stripped out. 
  * <p>
- * Special delimiter characters take precedence over String delimiters.
  * String delimiter characters take precedence over regular delimiters.
+ * Raw String delimiter characters take precedence over regular string delimiters.
  * Delimiter characters take parsing priority over other characters.
- * Delimiter evaluation priority goes: CommentDelimiter, Delimiter.
+ * Delimiter evaluation priority goes: Comment Delimiter, Delimiter.
  * Identifier evaluation priority goes: Keyword, CaseInsensitiveKeyword, Identifier.
  * <p>
  * The Lexer will also automatically manipulate {@link ReaderStack}s once it reaches the end of a stream.
  * Other implementations of this class may manipulate the stack as well (such as ones that do in-language stream inclusion).
  * <p>
  * If the system property <code>com.blackrook.base.Lexer.debug</code> is set to <code>true</code>, this does debugging output to {@link System#out}.
- * 
+ * <p>
+ * Lexer functions are NOT thread-safe.
  * @author Matthew Tropiano
  */
 public class Lexer
@@ -70,7 +71,6 @@ public class Lexer
 	private int lineNumber;
 	/** The current character number. */
 	private int charNumber;
-
 
 	/**
 	 * Creates a new lexer around a String, that will be wrapped into a StringReader.
@@ -1835,9 +1835,7 @@ public class Lexer
 			{
 				reader.close();
 			}
-			
 		}
-		
 	}
 
 	/**

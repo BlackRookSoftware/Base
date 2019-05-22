@@ -28,7 +28,6 @@ import java.util.Set;
  * Delimiter evaluation priority goes: Comment Delimiter, Delimiter.
  * Identifier evaluation priority goes: Keyword, CaseInsensitiveKeyword, Identifier.
  * <p>
- * The Lexer will also automatically manipulate {@link ReaderStack}s once it reaches the end of a stream.
  * Other implementations of this class may manipulate the stack as well (such as ones that do in-language stream inclusion).
  * <p>
  * If the system property <code>com.blackrook.base.Lexer.debug</code> is set to <code>true</code>, this does debugging output to {@link System#out}.

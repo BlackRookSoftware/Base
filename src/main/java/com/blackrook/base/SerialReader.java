@@ -8,52 +8,40 @@ package com.blackrook.base;
 
 import java.io.IOException;
 import java.io.InputStream;
-
-import com.blackrook.base.util.BitUtils;
-import com.blackrook.base.util.BufferUtils;
-import com.blackrook.base.util.SerializerUtils;
+import java.nio.charset.Charset;
 
 /**
- * Assists in endian reading and other special serializing stuff.
+ * Assists in endian reading from an input stream.
  * @author Matthew Tropiano
  */
-public class SerialReader implements AutoCloseable
+public class SerialReader
 {
-    private final byte[] singleByteBuffer = new byte[1];
+	private static final int SIZEOF_INT = Integer.SIZE/Byte.SIZE;
+	private static final int SIZEOF_SHORT = Short.SIZE/Byte.SIZE;
+	private static final int SIZEOF_LONG = Long.SIZE/Byte.SIZE;
+	private static final int SIZEOF_FLOAT = Float.SIZE/Byte.SIZE;
+	private static final int SIZEOF_DOUBLE = Double.SIZE/Byte.SIZE;
 
-    public static final int
-    END_OF_STREAM = 0xffffffff;
-    
-	public static final boolean
-	LITTLE_ENDIAN =	true,
-	BIG_ENDIAN = false;
+    public static final boolean LITTLE_ENDIAN =	true;
+    public static final boolean BIG_ENDIAN = false;
 
-	/** InputStream for reading. */
-	private InputStream in;
 	/** Endian mode switch. */
 	private boolean endianMode;
 	
-	private int bitsLeft;
-	private static byte[] BITMASK = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, (byte)0x80};
-	private byte currentBitByte;
-
 	/**
 	 * Wraps a super reader around an InputStream.  
-	 * @param i				the input stream to use.
-	 * @param endianMode	the endian mode to use.
+	 * @param endianMode an _ENDIAN mode.
 	 */
-	public SerialReader(InputStream i, boolean endianMode)
+	public SerialReader(boolean endianMode)
 	{
-		in = i;
 		setEndianMode(endianMode);
-		byteAlign();
 	}
 	
 	/**
 	 * Sets the byte endian mode for the byte conversion methods.
 	 * LITTLE_ENDIAN (Intel), the default, orients values from lowest byte to highest, while
 	 * BIG_ENDIAN (Motorola, VAX) orients values from highest byte to lowest.
-	 * @param mode	an _ENDIAN mode.
+	 * @param mode an _ENDIAN mode.
 	 */
 	public void setEndianMode(boolean mode)
 	{
@@ -62,37 +50,38 @@ public class SerialReader implements AutoCloseable
 	
 	/**
 	 * Reads a byte from the bound stream.
-	 * @return	the byte read or END_OF_STREAM if the end of the stream is reached.
+	 * @param in the input stream to read from.
+	 * @return the byte read or -1 if the end of the stream is reached.
 	 */
-	protected synchronized int byteRead() throws IOException
+	protected synchronized int byteRead(InputStream in) throws IOException
 	{
-		byteAlign();
 		return in.read();
 	}
 	
 	/**
 	 * Reads a series of bytes from the bound stream into a byte array until end of 
 	 * stream is reached or the array is filled with bytes.
-	 * @param b 		the target array to fill with bytes.
-	 * @return	the amount of bytes read or END_OF_STREAM if the end of the stream 
-	 * 			is reached before a single byte is read.
+	 * @param in the input stream to read from.
+	 * @param b the target array to fill with bytes.
+	 * @return the amount of bytes read or -1 if the end of the stream 
+	 * 		is reached before a single byte is read.
 	 */
-	protected int byteRead(byte[] b) throws IOException
+	protected int byteRead(InputStream in, byte[] b) throws IOException
 	{
-		return byteRead(b,b.length);
+		return byteRead(in, b, b.length);
 	}
 
 	/**
 	 * Reads a series of bytes from the bound stream into a byte array until end of 
 	 * stream is reached or <code>maxlen</code> bytes have been read.
-	 * @param b 		the target array to fill with bytes.
-	 * @param maxlen	the maximum amount of bytes to read.
-	 * @return	the amount of bytes read or END_OF_STREAM if the end of the stream 
-	 * 			is reached before a single byte is read.
+	 * @param in the input stream to read from.
+	 * @param b the target array to fill with bytes.
+	 * @param maxlen the maximum amount of bytes to read.
+	 * @return the amount of bytes read or -1 if the end of the stream 
+	 * 		is reached before a single byte is read.
 	 */
-	protected int byteRead(byte[] b, int maxlen) throws IOException
+	protected synchronized int byteRead(InputStream in, byte[] b, int maxlen) throws IOException
 	{
-		byteAlign();
 		return in.read(b, 0, maxlen);
 	}
 
@@ -106,17 +95,20 @@ public class SerialReader implements AutoCloseable
 	 * Keeps reading until it hits a specific byte pattern.
 	 * Returns true if the pattern is found, returns false if the end of the stream
 	 * is reached before the pattern is matched.
+	 * @param in the input stream to read from.
 	 */
-	public boolean seekToPattern(byte[] b) throws IOException
+	public boolean seekToPattern(InputStream in, byte[] b) throws IOException
 	{
-		int x = b.length;
 		int i = 0;
+		int x = b.length;
+		Cache cache = CACHE.get();
+		
 		while (i < x)
 		{
-			int buf = byteRead(singleByteBuffer);
+			int buf = byteRead(in, cache.buffer, 1);
 			if (buf < 1)
 				return false;
-			if (singleByteBuffer[0] == b[i])
+			if (cache.buffer[0] == b[i])
 				i++;
 			else
 				i = 0;
@@ -125,15 +117,16 @@ public class SerialReader implements AutoCloseable
 	}
 	
 	/**
-	 * Reads a bunch of bytes and checks to see if a set bytes match completely
+	 * Reads a bunch of bytes and checks to see if a set of bytes match completely
 	 * with the input byte string. It reads up to the length of b before it starts the check.
+	 * @param in the input stream to read from.
 	 * @param b	the input byte string.
 	 * @return true if the bytes read equal the the same bytes in the input array.
 	 */
-	public boolean readFor(byte[] b) throws IOException
+	public boolean readFor(InputStream in, byte[] b) throws IOException
 	{
 		byte[] read = new byte[b.length];
-		byteRead(read);
+		byteRead(in, read);
 		for (int i = 0; i < b.length; i++)
 			if (read[i] != b[i])
 				return false;
@@ -141,82 +134,17 @@ public class SerialReader implements AutoCloseable
 	}
 	
 	/**
-	 * If we started reading bits, this will align the reader to the next byte.
-	 * If this is called when we are at the beginning of the next byte, it doesn't do anything.
-	 * WARNING: This is the only method that cares about the current bits. If you start reading bits,
-	 * the other methods will continue at the next byte.
-	 */
-	public void byteAlign()
-	{
-		bitsLeft = 0;
-	}
-
-	/**
-	 * Reads a bit. Reads from least significant bit to most significant bit of the current byte.
-	 * @return	true if set, false if not.
-	 * @throws IOException	if the bit cannot be read.
-	 */
-	public boolean readBit() throws IOException
-	{
-		if (bitsLeft == 0)
-		{
-			currentBitByte = readByte();
-		    bitsLeft = 8;
-		}
-		return (BITMASK[BITMASK.length - (bitsLeft--)] & currentBitByte) != 0;
-	}
-
-	/**
-	 * Reads a set of bits in and returns it as an int.
-	 * @throws IllegalArgumentException if bits is less than zero or greater than 32.
-	 */
-	public int readIntBits(int bits) throws IOException
-	{
-		if (bits < 0 || bits > 32)
-			throw new IllegalArgumentException("Bits should be between 0 and 32.");
-
-		int out = 0;
-		int i = 0;
-		while ((bits--) > 0)
-		{
-			if (readBit())
-				out |= (1 << i);
-			i++;
-		}
-		return out;
-	}
-	
-	/**
-	 * Reads a set of bits in and returns it as a long.
-	 * @throws IllegalArgumentException if bits is less than zero or greater than 64.
-	 */
-	public long readLongBits(int bits) throws IOException
-	{
-		if (bits < 0 || bits > 64)
-			throw new IllegalArgumentException("Bits should be between 0 and 64.");
-
-		long out = 0;
-		int i = 0;
-		while ((bits--) > 0)
-		{
-			if (readBit())
-				out |= (1 << i);
-			i++;
-		}
-		return out;
-	}
-	
-	/**
 	 * Reads a byte array in from the reader.
+	 * @param in the input stream to read from.
 	 * @return an array of bytes
 	 * @throws IOException if the end of the stream is reached prematurely.
 	 */
-	public byte[] readByteArray() throws IOException
+	public byte[] readByteArray(InputStream in) throws IOException
 	{
-		byte[] out = new byte[readInt()];
+		byte[] out = new byte[readInt(in)];
 	    if (out.length == 0)
 	    	return out;
-	    int buf = byteRead(out);
+	    int buf = byteRead(in, out);
 	    if (buf < out.length)
 	        throw new IOException("Not enough bytes for byte array.");
 	    return out;
@@ -224,164 +152,174 @@ public class SerialReader implements AutoCloseable
 
 	/**
 	 * Reads a char array and returns it as a String.
+	 * @param in the input stream to read from.
 	 * @return the resulting String.
 	 * @throws IOException if an I/O error occurs.
 	 */
-	public String readString() throws IOException
+	public String readString(InputStream in) throws IOException
 	{
-		char[] c = readCharArray();
-	    return new String(c);
+	    return new String(readCharArray(in));
 	}
 
 	/**
 	 * Reads a byte vector (an int followed by a series of bytes) and returns it as a String
 	 * in a particular encoding.
+	 * @param in the input stream to read from.
 	 * @param encoding	the name of the encoding scheme.
 	 * @throws IOException if an I/O error occurs.
 	 */
-	public String readString(String encoding) throws IOException
+	public String readString(InputStream in, String encoding) throws IOException
 	{
-		byte[] b = readByteArray();
-	    return new String(b, encoding);
+	    return new String(readByteArray(in), encoding);
+	}
+
+	/**
+	 * Reads a byte vector (an int followed by a series of bytes) and returns it as a String
+	 * in a particular encoding.
+	 * @param in the input stream to read from.
+	 * @param charset the name of the charset to use.
+	 * @throws IOException if an I/O error occurs.
+	 */
+	public String readString(InputStream in, Charset charset) throws IOException
+	{
+	    return new String(readByteArray(in), charset);
 	}
 
 	/**
 	 * Reads in an array of strings.
 	 * Basically reads an integer length which is the length of the array and then reads that many strings.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public String[] readStringArray() throws IOException
+	public String[] readStringArray(InputStream in) throws IOException
 	{
-	    String[] out = new String[readInt()];
+	    String[] out = new String[readInt(in)];
 	    for (int i = 0; i < out.length; i++)
-	        out[i] = readString();
+	        out[i] = readString(in);
 	    return out;
-	}
-
-	/**
-	 * Reads in a boolean value stored as a single byte.
-	 * @throws IOException	if an error occurred during the read.
-	 */
-	public boolean readBoolean() throws IOException
-	{
-	    byte[] buffer = new byte[1];	    
-	    int buf = byteRead(buffer);
-	    if (buf < 1) 
-	    	throw new IOException("Not enough bytes for a boolean.");
-	    return (buffer[0] != 0) ? true : false;
 	}
 
 	/**
 	 * Reads in an array of boolean values.
 	 * Basically reads an integer length which is the amount of booleans and then reads 
 	 * in an integer at a time scanning bits for the boolean values.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public boolean[] readBooleanArray() throws IOException
+	public boolean[] readBooleanArray(InputStream in) throws IOException
 	{
-		boolean[] out = new boolean[readInt()];
+		boolean[] out = new boolean[readInt(in)];
 			
 		int currint = 0;
 		for (int i = 0; i < out.length; i++)
 		{
 			if (i%Integer.SIZE == 0)
-				currint = readInt();
+				currint = readInt(in);
 			
-			out[i] = BitUtils.bitIsSet(currint,(1<<(i%Integer.SIZE)));
+			out[i] = bitIsSet(currint,(1<<(i%Integer.SIZE)));
 		}
 		return out;
 	}
 
 	/**
 	 * Reads in a long value.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public long readLong() throws IOException
+	public long readLong(InputStream in) throws IOException
 	{
-	    byte[] buffer = new byte[BufferUtils.SIZEOF_LONG];
-	    int buf = byteRead(buffer);
-	    if (buf < BufferUtils.SIZEOF_LONG) 
+	    byte[] buffer = new byte[SIZEOF_LONG];
+	    int buf = byteRead(in, buffer);
+	    if (buf < SIZEOF_LONG) 
 	    	throw new IOException("Not enough bytes for a long.");
-	    return SerializerUtils.bytesToLong(buffer, endianMode);
+	    return bytesToLong(buffer, endianMode);
 	}
 
 	/**
 	 * Reads in an amount of long values specified by the user.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public long[] readLongs(int n) throws IOException
+	public long[] readLongs(InputStream in, int n) throws IOException
 	{
 	    long[] out = new long[n];
 	    for (int i = 0; i < out.length; i++)
-	    	out[i] = readLong();
+	    	out[i] = readLong(in);
 	    return out;
 	}
 
 	/**
 	 * Reads in an array of long values.
 	 * Basically reads an integer length which is the length of the array and then reads that many longs.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public long[] readLongArray() throws IOException
+	public long[] readLongArray(InputStream in) throws IOException
 	{
-		return readLongs(readInt());
+		return readLongs(in, readInt(in));
 	}
 
 	/**
 	 * Reads in a single byte.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public byte readByte() throws IOException
+	public byte readByte(InputStream in) throws IOException
 	{
-	    int buf = byteRead(singleByteBuffer);
+		Cache cache = CACHE.get();
+	    int buf = byteRead(in, cache.buffer, 1);
 	    if (buf < 1)
 	    	throw new IOException("not enough bytes");
 	    else if (buf < 1) throw new IOException("Not enough bytes for a byte.");
-	    return singleByteBuffer[0];
+	    return cache.buffer[0];
 	}
 
 	/**
 	 * Reads in a single byte, cast to a short to eliminate sign.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public short readUnsignedByte() throws IOException
+	public short readUnsignedByte(InputStream in) throws IOException
 	{
-	    return (short)(readByte() & 0x0ff);
+	    return (short)(readByte(in) & 0x0ff);
 	}
 
 	/**
 	 * Reads a series of bytes from the bound stream into a byte array until end of 
 	 * stream is reached or the array is filled with bytes.
-	 * @param b 		the target array to fill with bytes.
+	 * @param in the input stream to read from.
+	 * @param b the target array to fill with bytes.
 	 * @return	the amount of bytes read or END_OF_STREAM if the end of the stream 
 	 * 			is reached before a single byte is read.
 	 */
-	public int readBytes(byte[] b) throws IOException
+	public int readBytes(InputStream in, byte[] b) throws IOException
 	{
-		return byteRead(b);
+		return byteRead(in, b);
 	}
 
 	/**
 	 * Reads a series of bytes from the bound stream into a byte array until end of 
 	 * stream is reached or <code>maxlen</code> bytes have been read.
-	 * @param b 		the target array to fill with bytes.
-	 * @param maxlen	the maximum amount of bytes to read.
+	 * @param in the input stream to read from.
+	 * @param b the target array to fill with bytes.
+	 * @param maxlen the maximum amount of bytes to read.
 	 * @return	the amount of bytes read or END_OF_STREAM if the end of the stream 
 	 * 			is reached before a single byte is read.
 	 */
-	public int readBytes(byte[] b, int maxlen) throws IOException
+	public int readBytes(InputStream in, byte[] b, int maxlen) throws IOException
 	{
-		return byteRead(b, maxlen);
+		return byteRead(in, b, maxlen);
 	}
 
 	/**
 	 * Reads in a specified amount of bytes, returned as an array.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public byte[] readBytes(int n) throws IOException
+	public byte[] readBytes(InputStream in, int n) throws IOException
 	{
 	    byte[] out = new byte[n];
-	    int buf = byteRead(out);
+	    int buf = byteRead(in, out);
 	    if (buf < n) 
 	    	throw new IOException("Not enough bytes to read.");
 	    return out;
@@ -389,35 +327,38 @@ public class SerialReader implements AutoCloseable
 
 	/**
 	 * Reads in a integer, cast to a long, discarding sign.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public long readUnsignedInt() throws IOException
+	public long readUnsignedInt(InputStream in) throws IOException
 	{
-		return readInt() & 0x0ffffffffL;
+		return readInt(in) & 0x0ffffffffL;
 	}
 	
 	/**
 	 * Reads in an integer.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public int readInt() throws IOException
+	public int readInt(InputStream in) throws IOException
 	{
-	    byte[] buffer = new byte[BufferUtils.SIZEOF_INT];
-	    int buf = byteRead(buffer);
-	    if (buf < BufferUtils.SIZEOF_INT) 
+	    byte[] buffer = new byte[SIZEOF_INT];
+	    int buf = byteRead(in, buffer);
+	    if (buf < SIZEOF_INT) 
 	    	throw new IOException("Not enough bytes for an int.");
-	    return SerializerUtils.bytesToInt(buffer, endianMode);
+	    return bytesToInt(buffer, endianMode);
 	}
 
 	/**
 	 * Reads in a 24-bit integer.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public int read24BitInt() throws IOException
+	public int read24BitInt(InputStream in) throws IOException
 	{
 		byte[] bbu = new byte[3];
-	    byte[] buffer = new byte[BufferUtils.SIZEOF_INT];
-	    int buf = byteRead(bbu,3);
+	    byte[] buffer = new byte[SIZEOF_INT];
+	    int buf = byteRead(in, bbu,3);
 	    if (buf < 3)
 	    	throw new IOException("not enough bytes");
 	    else if (buf < bbu.length) throw new IOException("Not enough bytes for a 24-bit int.");
@@ -425,226 +366,189 @@ public class SerialReader implements AutoCloseable
 	    	System.arraycopy(bbu, 0, buffer, 1, 3);
 	    else if (endianMode == LITTLE_ENDIAN)
 	    	System.arraycopy(bbu, 0, buffer, 0, 3);
-	    return SerializerUtils.bytesToInt(buffer, endianMode);
+	    return bytesToInt(buffer, endianMode);
 	}
 
 	/**
 	 * Reads in a specified amount of integers.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public int[] readInts(int n) throws IOException
+	public int[] readInts(InputStream in, int n) throws IOException
 	{
 	    int[] out = new int[n];
 	    for (int i = 0; i < out.length; i++)
-	    	out[i] = readInt();
+	    	out[i] = readInt(in);
 	    return out;
 	}
 
 	/**
 	 * Reads in an array of integers.
 	 * Basically reads an integer length which is the length of the array and then reads that many integers.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public int[] readIntArray() throws IOException
+	public int[] readIntArray(InputStream in) throws IOException
 	{
-	    return readInts(readInt());
-	}
-
-	/**
-	 * Reads in an array of arrays of integers.
-	 * Basically reads an integer length which is the length of the array and then reads that many integer arrays.
-	 * @throws IOException	if an error occurred during the read.
-	 */
-	public int[][] readDoubleIntArray() throws IOException
-	{
-	    int[][] out = new int[readInt()][];
-	    for (int i = 0; i < out.length; i++)
-	        out[i] = readIntArray();
-	    return out;	    
-	}
-
-	/**
-	 * Reads in an array of arrays of arrays of integers.
-	 * Basically reads an integer length which is the length of the array and then reads that many arrays of integer arrays.
-	 * @throws IOException	if an error occurred during the read.
-	 */
-	public int[][][] readTripleIntArray() throws IOException
-	{
-	    int[][][] out = new int[readInt()][][];
-	    for (int i = 0; i < out.length; i++)
-	        out[i] = readDoubleIntArray();
-	    return out;	    
+	    return readInts(in, readInt(in));
 	}
 
 	/**
 	 * Reads in a 32-bit float.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public float readFloat() throws IOException
+	public float readFloat(InputStream in) throws IOException
 	{
-	    byte[] buffer = new byte[BufferUtils.SIZEOF_FLOAT];
-	    int buf = byteRead(buffer);
-	    if (buf < BufferUtils.SIZEOF_FLOAT) 
+	    byte[] buffer = new byte[SIZEOF_FLOAT];
+	    int buf = byteRead(in, buffer);
+	    if (buf < SIZEOF_FLOAT) 
 	    	throw new IOException("Not enough bytes for a float.");
-	    return SerializerUtils.bytesToFloat(buffer, endianMode);
+	    return bytesToFloat(buffer, endianMode);
 	}
 
 	/**
 	 * Reads in a specified amount of 32-bit floats.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public float[] readFloats(int n) throws IOException
+	public float[] readFloats(InputStream in, int n) throws IOException
 	{
 	    float[] out = new float[n];
 	    for (int i = 0; i < out.length; i++)
-	    	out[i] = readFloat();
+	    	out[i] = readFloat(in);
 	    return out;
 	}
 
 	/**
 	 * Reads in an array 32-bit floats.
 	 * Basically reads an integer length which is the length of the array and then reads that many floats.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public float[] readFloatArray() throws IOException
+	public float[] readFloatArray(InputStream in) throws IOException
 	{
-	    return readFloats(readInt());
+	    return readFloats(in, readInt(in));
 	}
 
 	/**
 	 * Reads in a 64-bit float.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public double readDouble() throws IOException
+	public double readDouble(InputStream in) throws IOException
 	{
-	    byte[] buffer = new byte[BufferUtils.SIZEOF_DOUBLE];
-	    int buf = byteRead(buffer);
-	    if (buf < BufferUtils.SIZEOF_DOUBLE) 
+	    byte[] buffer = new byte[SIZEOF_DOUBLE];
+	    int buf = byteRead(in, buffer);
+	    if (buf < SIZEOF_DOUBLE) 
 	    	throw new IOException("Not enough bytes for a double.");
-	    return Double.longBitsToDouble(SerializerUtils.bytesToLong(buffer, endianMode));
+	    return Double.longBitsToDouble(bytesToLong(buffer, endianMode));
 	}
 
 	/**
 	 * Reads in a specified amount of 64-bit floats.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public double[] readDoubles(int n) throws IOException
+	public double[] readDoubles(InputStream in, int n) throws IOException
 	{
 	    double[] out = new double[n];
 	    for (int i = 0; i < out.length; i++)
-	    	out[i] = readDouble();
+	    	out[i] = readDouble(in);
 	    return out;
 	}
 
 	/**
 	 * Reads in an array 64-bit floats.
 	 * Basically reads an integer length which is the length of the array and then reads that many doubles.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public double[] readDoubleArray() throws IOException
+	public double[] readDoubleArray(InputStream in) throws IOException
 	{
-	    return readDoubles(readInt());
+	    return readDoubles(in, readInt(in));
 	}
 
 	/**
 	 * Reads in a short.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public short readShort() throws IOException
+	public short readShort(InputStream in) throws IOException
 	{
-	    byte[] buffer = new byte[BufferUtils.SIZEOF_SHORT];
-	    int buf = byteRead(buffer);
-	    if (buf < BufferUtils.SIZEOF_SHORT) 
+	    byte[] buffer = new byte[SIZEOF_SHORT];
+	    int buf = byteRead(in, buffer);
+	    if (buf < SIZEOF_SHORT) 
 	    	throw new IOException("Not enough bytes for a short.");
-	    return SerializerUtils.bytesToShort(buffer, endianMode);
+	    return bytesToShort(buffer, endianMode);
 	}
 
 	/**
 	 * Reads in a short, cast to an integer, discarding sign.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public int readUnsignedShort() throws IOException
+	public int readUnsignedShort(InputStream in) throws IOException
 	{
-		return readShort() & 0x0ffff;
+		return readShort(in) & 0x0ffff;
 	}
 	
 	/**
 	 * Reads in a specified amount of shorts.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public short[] readShorts(int n) throws IOException
+	public short[] readShorts(InputStream in, int n) throws IOException
 	{
 	    short[] out = new short[n];
 	    for (int i = 0; i < out.length; i++)
-	    	out[i] = readShort();
+	    	out[i] = readShort(in);
 	    return out;
 	}
 
 	/**
 	 * Reads in an array of shorts.
 	 * Basically reads an integer length which is the length of the array and then reads that many shorts.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public short[] readShortArray() throws IOException
+	public short[] readShortArray(InputStream in) throws IOException
 	{
-	    return readShorts(readInt());
-	}
-
-	/**
-	 * Reads in an array of arrays of shorts.
-	 * Basically reads an integer length which is the length of the array and then reads that many arrays of shorts.
-	 * @throws IOException	if an error occurred during the read.
-	 */
-	public short[][] readDoubleShortArray() throws IOException
-	{
-	    short[][] out = new short[readInt()][];
-	    for (int i = 0; i < out.length; i++)
-	        out[i] = readShortArray();
-	    return out;
-	}
-
-	/**
-	 * Reads in an array of arrays of arrays of shorts.
-	 * Basically reads an integer length which is the length of the array and then reads that many arrays of arrays of shorts.
-	 * @throws IOException	if an error occurred during the read.
-	 */
-	public short[][][] readTripleShortArray() throws IOException
-	{
-	    short[][][] out = new short[readInt()][][];
-	    for (int i = 0; i < out.length; i++)
-	        out[i] = readDoubleShortArray();
-	    return out;
+	    return readShorts(in, readInt(in));
 	}
 
 	/**
 	 * Reads in a character.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public char readChar() throws IOException
+	public char readChar(InputStream in) throws IOException
 	{
-	    return shortToChar(readShort());
+	    return shortToChar(readShort(in));
 	}
 
 	/**
 	 * Reads in a specific amount of characters.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public char[] readChars(int n) throws IOException
+	public char[] readChars(InputStream in, int n) throws IOException
 	{
 	    char[] out = new char[n];
 	    for (int i = 0; i < out.length; i++)
-	    	out[i] = readChar();
+	    	out[i] = readChar(in);
 	    return out;
 	}
 
 	/**
 	 * Reads in an array of characters.
 	 * Basically reads an integer length which is the length of the array and then reads that many characters.
-	 * @throws IOException	if an error occurred during the read.
+	 * @param in the input stream to read from.
+	 * @throws IOException if an error occurred during the read.
 	 */
-	public char[] readCharArray() throws IOException
+	public char[] readCharArray(InputStream in) throws IOException
 	{
-	    short[] s = readShortArray();
+	    short[] s = readShortArray(in);
 	    char[] out = new char[s.length];
 	    for (int i = 0; i < s.length; i++)
 	        out[i] = shortToChar(s[i]);
@@ -655,15 +559,16 @@ public class SerialReader implements AutoCloseable
 	 * Reads an integer from an input stream that is variable-length encoded.
 	 * Reads up to four bytes. Due to the nature of this value, it is always
 	 * read in a Big-Endian fashion.
+	 * @param in the input stream to read from.
 	 * @return an int value from 0x00000000 to 0x0FFFFFFF.
 	 * @throws IOException if the next byte to read is not available.
 	 */
-	public int readVariableLengthInt() throws IOException
+	public int readVariableLengthInt(InputStream in) throws IOException
 	{
 		int out = 0;
 		byte b = 0;
 		do {
-			b = readByte();
+			b = readByte(in);
 			out |= b & 0x7f;
 			if ((b & 0x80) != 0)
 				out <<= 7;
@@ -675,15 +580,16 @@ public class SerialReader implements AutoCloseable
 	 * Reads a long from an input stream that is variable-length encoded.
 	 * Reads up to eight bytes. Due to the nature of this value, it is always
 	 * read in a Big-Endian fashion.
-	 * @return a long value from 0x00000000 to 0x7FFFFFFFFFFFFFFF.
+	 * @param in the input stream to read from.
+	 * @return a long value from 0x0000000000000000 to 0x7FFFFFFFFFFFFFFF.
 	 * @throws IOException if the next byte to read is not available.
 	 */
-	public long readVariableLengthLong() throws IOException
+	public long readVariableLengthLong(InputStream in) throws IOException
 	{
 		long out = 0;
 		byte b = 0;
 		do {
-			b = readByte();
+			b = readByte(in);
 			out |= b & 0x7f;
 			if ((b & 0x80) != 0)
 				out <<= 7;
@@ -691,13 +597,58 @@ public class SerialReader implements AutoCloseable
 		return out;
 	}
 
-	/**
-	 * Closes the bound input stream.
-	 * $throws IOException if an error occurred.
-	 */
-	public final void close() throws IOException
+	private static boolean bitIsSet(long value, long test)
 	{
-		in.close();
+		return (value & test) == test;
 	}
 
+	private static float bytesToFloat(byte[] b, boolean endianMode)
+	{
+	    return Float.intBitsToFloat(bytesToInt(b, endianMode));
+	}
+
+	private static short bytesToShort(byte[] b, boolean endianMode)
+	{
+		short out = 0;
+	
+		int stop = Math.min(b.length,SIZEOF_SHORT);
+		for (int x = 0; x < stop; x++)
+			out |= (b[x]&0xFF) << Byte.SIZE*(endianMode ? x : SIZEOF_SHORT-1-x);
+	
+		return out;
+	}
+
+	private static int bytesToInt(byte[] b, boolean endianMode)
+	{
+		int out = 0;
+	
+		int stop = Math.min(b.length,SIZEOF_INT);
+		for (int x = 0; x < stop; x++)
+			out |= (b[x]&0xFF) << Byte.SIZE*(endianMode ? x : SIZEOF_INT-1-x);
+	
+		return out;
+	}
+
+	private static long bytesToLong(byte[] b, boolean endianMode)
+	{
+		long out = 0;
+	
+		int stop = Math.min(b.length,SIZEOF_LONG);
+		for (int x = 0; x < stop; x++)
+			out |= (long)(b[x]&0xFFL) << (long)(Byte.SIZE*(endianMode ? x : SIZEOF_LONG-1-x));
+	
+		return out;
+	}
+
+	private static final ThreadLocal<Cache> CACHE = ThreadLocal.withInitial(()->new Cache());
+	
+	private static class Cache
+	{
+		byte[] buffer;
+		private Cache()
+		{
+			this.buffer = new byte[8];
+		}
+	}
+	
 }

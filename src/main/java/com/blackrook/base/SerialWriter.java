@@ -9,15 +9,22 @@ package com.blackrook.base;
 import java.io.IOException;
 import java.io.OutputStream;
 
-import com.blackrook.base.util.SerializerUtils;
-
 /**
  * Assists in endian reading and other special serializing stuff.
  * @author Matthew Tropiano
  */
 public class SerialWriter implements AutoCloseable
 {
-    private final byte[] singleByteBuffer = new byte[1];
+    /** The size of an int in bytes. */
+	private static final int SIZEOF_INT = Integer.SIZE/Byte.SIZE;
+
+	/** The size of a short in bytes. */
+	private static final int SIZEOF_SHORT = Short.SIZE/Byte.SIZE;
+
+	/** The size of a long in bytes. */
+	private static final int SIZEOF_LONG = Long.SIZE/Byte.SIZE;
+
+	private final byte[] singleByteBuffer = new byte[1];
 
     public static final boolean
 	LITTLE_ENDIAN =	true,
@@ -52,7 +59,7 @@ public class SerialWriter implements AutoCloseable
 	 */
 	public void setEndianMode(boolean mode)
 	{
-		endianMode = mode;
+		this.endianMode = mode;
 	}
 	
 	/**
@@ -220,7 +227,7 @@ public class SerialWriter implements AutoCloseable
 	public void writeInt(int i) throws IOException
 	{
 		byte[] buffer = Cache.LOCAL.get().buffer;
-		SerializerUtils.intToBytes(i, endianMode, buffer, 0);
+		intToBytes(i, endianMode, buffer, 0);
 		out.write(buffer, 0, 4);
 	}
 
@@ -329,7 +336,7 @@ public class SerialWriter implements AutoCloseable
 	public void writeLong(long l) throws IOException
 	{
 		byte[] buffer = Cache.LOCAL.get().buffer;
-		SerializerUtils.longToBytes(l, endianMode, buffer, 0);
+		longToBytes(l, endianMode, buffer, 0);
 		out.write(buffer);
 	}
 
@@ -394,7 +401,7 @@ public class SerialWriter implements AutoCloseable
 	public void writeShort(short s) throws IOException
 	{
 		byte[] buffer = Cache.LOCAL.get().buffer;
-		SerializerUtils.shortToBytes(s, endianMode, buffer, 0);
+		shortToBytes(s, endianMode, buffer, 0);
 		out.write(buffer, 0, 2);
 	}
 
@@ -490,6 +497,27 @@ public class SerialWriter implements AutoCloseable
 		out.close();
 	}
 	
+	private static int shortToBytes(short s, boolean endianMode, byte[] out, int offset)
+	{
+		for (int x = endianMode ? 0 : SIZEOF_SHORT-1; endianMode ? (x < SIZEOF_SHORT) : (x >= 0); x += endianMode ? 1 : -1)
+			out[endianMode ? x : SIZEOF_SHORT-1 - x] = (byte)((s & (0xFF << Byte.SIZE*x)) >> Byte.SIZE*x); 
+		return offset + SIZEOF_SHORT;
+	}
+
+	private static int intToBytes(int i, boolean endianMode, byte[] out, int offset)
+	{
+		for (int x = endianMode ? 0 : SIZEOF_INT-1; endianMode ? (x < SIZEOF_INT) : (x >= 0); x += endianMode ? 1 : -1)
+			out[offset + (endianMode ? x : SIZEOF_INT-1 - x)] = (byte)((i & (0xFF << Byte.SIZE*x)) >> Byte.SIZE*x);
+		return offset + SIZEOF_INT;
+	}
+
+	private static int longToBytes(long l, boolean endianMode, byte[] out, int offset)
+	{
+		for (int x = endianMode ? 0 : SIZEOF_LONG-1; endianMode ? (x < SIZEOF_LONG) : (x >= 0); x += endianMode ? 1 : -1)
+			out[offset + (endianMode ? x : SIZEOF_LONG-1 - x)] = (byte)((l & (0xFFL << Byte.SIZE*x)) >> Byte.SIZE*x); 
+		return offset + SIZEOF_LONG;
+	}
+
 	private static class Cache
 	{
 		private static final ThreadLocal<Cache> LOCAL = ThreadLocal.withInitial(()->new Cache());
@@ -501,5 +529,5 @@ public class SerialWriter implements AutoCloseable
 			this.buffer = new byte[8];
 		}
 	}
-
+	
 }

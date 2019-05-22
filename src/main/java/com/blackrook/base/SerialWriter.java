@@ -8,54 +8,38 @@ package com.blackrook.base;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 
 /**
- * Assists in endian reading and other special serializing stuff.
+ * Assists in endian writing to an output stream.
  * @author Matthew Tropiano
  */
-public class SerialWriter implements AutoCloseable
+public class SerialWriter
 {
-    /** The size of an int in bytes. */
 	private static final int SIZEOF_INT = Integer.SIZE/Byte.SIZE;
-
-	/** The size of a short in bytes. */
 	private static final int SIZEOF_SHORT = Short.SIZE/Byte.SIZE;
-
-	/** The size of a long in bytes. */
 	private static final int SIZEOF_LONG = Long.SIZE/Byte.SIZE;
 
-	private final byte[] singleByteBuffer = new byte[1];
+    public static final boolean LITTLE_ENDIAN =	true;
+    public static final boolean BIG_ENDIAN = false;
 
-    public static final boolean
-	LITTLE_ENDIAN =	true,
-	BIG_ENDIAN = false;
-
-	/** OutputStream for reading. */
-	private OutputStream out;
 	/** Endian mode switch. */
 	private boolean endianMode;
 
-	private int bitsLeft;
-	private static byte[] BITMASK = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, (byte)0x80};
-	private byte currentBitByte;
-
 	/**
-	 * Wraps a super writer around an OutputStream.  
-	 * @param o				the output stream to use.
-	 * @param endianMode	the endian mode to use.
+	 * Creates a new serial writer.  
+	 * @param endianMode an _ENDIAN mode.
 	 */
-	public SerialWriter(OutputStream o, boolean endianMode)
+	public SerialWriter(boolean endianMode)
 	{
-		out = o;
 		setEndianMode(endianMode);
-		bitsLeft = 8;
 	}
 	
 	/**
 	 * Sets the byte endian mode for the byte conversion methods.
 	 * LITTLE_ENDIAN (Intel), the default, orients values from lowest byte to highest, while
 	 * BIG_ENDIAN (Motorola) orients values from highest byte to lowest.
-	 * @param mode	an _ENDIAN mode.
+	 * @param mode an _ENDIAN mode.
 	 */
 	public void setEndianMode(boolean mode)
 	{
@@ -63,170 +47,130 @@ public class SerialWriter implements AutoCloseable
 	}
 	
 	/**
-	 * Casts a char to a short.
+	 * Writes a String.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	private short charToShort(char c)
+	public void writeString(OutputStream out, String s) throws IOException
 	{
-	    return (short)(c & 0xFFFF);
+		writeCharArray(out, s.toCharArray());
 	}
 
 	/**
-	 * Writes a String to the bound output stream.
-	 * @throws IOException	if an error occurred during the write.
+	 * Writes a String in a specific encoding.
+	 * @param out the output stream.
+	 * @param s	the String to write.
+	 * @param encodingType the encoding type name.
 	 */
-	public void writeString(String s) throws IOException
+	public void writeString(OutputStream out, String s, String encodingType) throws IOException
 	{
-		writeCharArray(s.toCharArray());
-	}
-
-	/**
-	 * Writes a String to the bound output stream in a
-	 * specific encoding.
-	 * @param s				the String to write.
-	 * @param encodingType	the encoding type name.
-	 */
-	public void writeString(String s, String encodingType) throws IOException
-	{
-		writeByteArray(s.getBytes(encodingType));
+		writeByteArray(out, s.getBytes(encodingType));
 	}
 	
 	/**
-	 * Writes an array of Strings to the bound output stream,
+	 * Writes a String in a specific encoding.
+	 * @param out the output stream.
+	 * @param s	the String to write.
+	 * @param charset the encoding charset.
+	 */
+	public void writeString(OutputStream out, String s, Charset charset) throws IOException
+	{
+		writeByteArray(out, s.getBytes(charset));
+	}
+	
+	/**
+	 * Writes an array of Strings,
 	 * which is the length of the array as an integer plus each String.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeStringArray(String[] s) throws IOException
+	public void writeStringArray(OutputStream out, String[] s) throws IOException
 	{
-		writeInt(s.length);
+		writeInt(out, s.length);
 		for (int i = 0; i < s.length; i++)
-			writeString(s[i]);
-	}
-
-	/**
-	 * Flushes the bit buffer used for bit-writing.
-	 * @throws IOException	if the bits cannot be written.
-	 */
-	public void flushBits() throws IOException
-	{
-		writeByte(currentBitByte);
-		currentBitByte = 0;
-		bitsLeft = 8;
-	}
-
-    /**
-	 * Writes a bit. Writes least significant bit to most significant bit of the current byte.
-	 * @throws IOException	if the bit cannot be written.
-	 */
-	public void writeBit(boolean bit) throws IOException
-	{
-		if (bitsLeft == 0)
-			flushBits();
-		if (bit)
-			currentBitByte |= BITMASK[BITMASK.length - bitsLeft];
-		bitsLeft--;
-	}
-
-	/**
-	 * Writes a set of bits to the bit buffer.
-	 * @throws IllegalArgumentException if bits is less than zero or greater than 32.
-	 */
-	public void writeIntBits(int bitcount, int bits) throws IOException
-	{
-		if (bits < 0 || bits > 32)
-			throw new IllegalArgumentException("Bits should be between 0 and 32.");
-	
-		int i = 0;
-		while ((bits--) > 0)
-			writeBit((bits & (1 << i++)) != 0);
-	}
-
-	/**
-	 * Writes a set of bits to the bit buffer.
-	 * @throws IllegalArgumentException if bits is less than zero or greater than 64.
-	 */
-	public void writeLongBits(int bitcount, long bits) throws IOException
-	{
-		if (bits < 0 || bits > 64)
-			throw new IllegalArgumentException("Bits should be between 0 and 64.");
-	
-		int i = 0;
-		while ((bits--) > 0)
-			writeBit((bits & (1 << i++)) != 0);
+			writeString(out, s[i]);
 	}
 
 	/**
 	 * Writes a byte.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeByte(byte b) throws IOException
+	public void writeByte(OutputStream out, byte b) throws IOException
 	{
-		singleByteBuffer[0] = b;
-		out.write(singleByteBuffer);
+		out.write(b);
 	}
 
 	/**
 	 * Writes a short that is less than 256 to a byte.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeUnsignedByte(short b) throws IOException
+	public void writeUnsignedByte(OutputStream out, short b) throws IOException
 	{
-		writeByte((byte)(b & 0x0ff));
+		writeByte(out, (byte)(b & 0x0ff));
 	}
 
 	/**
 	 * Writes an int that is less than 256 to a byte.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeUnsignedByte(int b) throws IOException
+	public void writeUnsignedByte(OutputStream out, int b) throws IOException
 	{
-		writeByte((byte)(b & 0x0ff));
+		writeByte(out, (byte)(b & 0x0ff));
 	}
 
 	/**
-	 * Writes a series of bytes to the bound stream.
-	 * @throws IOException	if an error occurred during the write.
+	 * Writes a series of bytes.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeBytes(byte[] b) throws IOException
+	public void writeBytes(OutputStream out, byte[] b) throws IOException
 	{
 		out.write(b);
 	}
 
 	/**
-	 * Writes an array of bytes to the bound stream,
+	 * Writes an array of bytes,
 	 * which is the length of the array as an integer plus each byte.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeByteArray(byte[] b) throws IOException
+	public void writeByteArray(OutputStream out, byte[] b) throws IOException
 	{
-		writeInt(b.length);
+		writeInt(out, b.length);
 		out.write(b);
 	}
 
 	/**
-	 * Writes a boolean to the bound stream as a byte.
-	 * @throws IOException	if an error occurred during the write.
+	 * Writes a boolean as a byte.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeBoolean(boolean b) throws IOException
+	public void writeBoolean(OutputStream out, boolean b) throws IOException
 	{
-		writeByte((byte)(b?1:0));
+		writeByte(out, (byte)(b?1:0));
 	}
 
 	/**
 	 * Writes a long that is less than 2^32 to an integer.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeUnsignedInteger(long l) throws IOException
+	public void writeUnsignedInteger(OutputStream out, long l) throws IOException
 	{
-		writeInt((int)(l & 0x0ffffffffL));
+		writeInt(out, (int)(l & 0x0ffffffffL));
 	}
 
 	/**
-	 * Writes an integer to the bound stream.
-	 * @throws IOException	if an error occurred during the write.
+	 * Writes an integer.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeInt(int i) throws IOException
+	public void writeInt(OutputStream out, int i) throws IOException
 	{
-		byte[] buffer = Cache.LOCAL.get().buffer;
+		byte[] buffer = CACHE.get().buffer;
 		intToBytes(i, endianMode, buffer, 0);
 		out.write(buffer, 0, 4);
 	}
@@ -235,10 +179,11 @@ public class SerialWriter implements AutoCloseable
 	 * Converts an integer from an int to a variable-length string of bytes.
 	 * Makes up to four bytes. Due to the nature of this algorithm, it is always
 	 * written out in a Big-Endian fashion.
+	 * @param out the output stream.
 	 * @param i	the int to convert.
 	 * @throws IllegalArgumentException	if the int value to convert is above 0x0fffffff.
 	 */
-	public void writeVariableLengthInt(int i) throws IOException
+	public void writeVariableLengthInt(OutputStream out, int i) throws IOException
 	{
 		if ((i & 0xf0000000) != 0)
 			throw new IllegalArgumentException("Int value out of bounds.");
@@ -265,10 +210,11 @@ public class SerialWriter implements AutoCloseable
 	 * Converts a long from a long to a variable-length string of bytes.
 	 * Makes up to eight bytes. Due to the nature of this algorithm, it is always
 	 * written out in a Big-Endian fashion.
+	 * @param out the output stream.
 	 * @param i	the long to convert.
 	 * @throws IllegalArgumentException	if the long value to convert is above 0x7fffffffffffffffL.
 	 */
-	public void writeVariableLengthLong(long i) throws IOException
+	public void writeVariableLengthLong(OutputStream out, long i) throws IOException
 	{
 		if ((i & 0x8000000000000000L) != 0)
 			throw new IllegalArgumentException("Long value too large.");
@@ -294,209 +240,170 @@ public class SerialWriter implements AutoCloseable
 	}
 
 	/**
-	 * Writes an integer array to the bound stream,
+	 * Writes an integer array,
 	 * which is the length of the array as an integer plus each integer.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeIntArray(int[] i) throws IOException
+	public void writeIntArray(OutputStream out, int[] i) throws IOException
 	{
-		writeInt(i.length);
+		writeInt(out, i.length);
 	    for (int x = 0; x < i.length; x++)
-	    	writeInt(i[x]);
+	    	writeInt(out, i[x]);
 	}
 
 	/**
-	 * Writes an array of integer arrays to the bound stream,
-	 * which is the length of the array as an integer plus each integer array.
-	 * @throws IOException	if an error occurred during the write.
+	 * Writes a long.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeIntArray(int[][] i) throws IOException
+	public void writeLong(OutputStream out, long l) throws IOException
 	{
-		writeInt(i.length);
-		for (int x = 0; x < i.length; x++)
-			writeIntArray(i[x]);
-	}
-
-	/**
-	 * Writes an array of arrays of integer arrays to the bound stream,
-	 * which is the length of the array as an integer plus each array of integer arrays.
-	 * @throws IOException	if an error occurred during the write.
-	 */
-	public void writeIntArray(int[][][] i) throws IOException
-	{
-		writeInt(i.length);
-		for (int x = 0; x < i.length; x++)
-			writeIntArray(i[x]);
-	}
-
-	/**
-	 * Writes a long to the bound stream.
-	 * @throws IOException	if an error occurred during the write.
-	 */
-	public void writeLong(long l) throws IOException
-	{
-		byte[] buffer = Cache.LOCAL.get().buffer;
+		byte[] buffer = CACHE.get().buffer;
 		longToBytes(l, endianMode, buffer, 0);
 		out.write(buffer);
 	}
 
 	/**
-	 * Writes an array of longs to the bound stream,
+	 * Writes an array of longs,
 	 * which is the length of the array as an integer plus each long.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeLongArray(long[] l) throws IOException
+	public void writeLongArray(OutputStream out, long[] l) throws IOException
 	{
-		writeInt(l.length);
+		writeInt(out, l.length);
 		for (int x = 0; x < l.length; x++)
-			writeLong(l[x]);
+			writeLong(out, l[x]);
 	}
 
 	/**
-	 * Writes an array of 32-bit floats to the bound stream,
+	 * Writes an array of 32-bit floats,
 	 * which is the length of the array as an integer plus each float.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeFloatArray(float[] f) throws IOException
+	public void writeFloatArray(OutputStream out, float[] f) throws IOException
 	{	
-		writeInt(f.length);
+		writeInt(out, f.length);
 		for (int x = 0; x < f.length; x++)
-			writeFloat(f[x]);
+			writeFloat(out, f[x]);
 	}
 
 	/**
-	 * Writes a 32-bit float to the bound stream.
-	 * @throws IOException	if an error occurred during the write.
+	 * Writes a 32-bit float.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeFloat(float f) throws IOException
+	public void writeFloat(OutputStream out, float f) throws IOException
 	{
-	    writeInt(Float.floatToIntBits(f));
+	    writeInt(out, Float.floatToIntBits(f));
 	}
 
 	/**
-	 * Writes a 64-bit float to the bound stream.
-	 * @throws IOException	if an error occurred during the write.
+	 * Writes a 64-bit float.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeDouble(double d) throws IOException
+	public void writeDouble(OutputStream out, double d) throws IOException
 	{
-	    writeLong(Double.doubleToLongBits(d));
+	    writeLong(out, Double.doubleToLongBits(d));
 	}
 
 	/**
-	 * Writes an array of 64-bit floats to the bound stream,
+	 * Writes an array of 64-bit floats,
 	 * which is the length of the array as an integer plus each double.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeDoubleArray(double[] d) throws IOException
+	public void writeDoubleArray(OutputStream out, double[] d) throws IOException
 	{	
-		writeInt(d.length);
+		writeInt(out, d.length);
 		for (int x = 0; x < d.length; x++)
-			writeDouble(d[x]);
+			writeDouble(out, d[x]);
 	}
 
 	/**
-	 * Writes a short to the bound stream.
-	 * @throws IOException	if an error occurred during the write.
+	 * Writes a short.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeShort(short s) throws IOException
+	public void writeShort(OutputStream out, short s) throws IOException
 	{
-		byte[] buffer = Cache.LOCAL.get().buffer;
+		byte[] buffer = CACHE.get().buffer;
 		shortToBytes(s, endianMode, buffer, 0);
 		out.write(buffer, 0, 2);
 	}
 
 	/**
-	 * Writes an integer, less than 65536, as a short to the bound stream.
-	 * @throws IOException	if an error occurred during the write.
+	 * Writes an integer, less than 65536, as a short.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeUnsignedShort(int s) throws IOException
+	public void writeUnsignedShort(OutputStream out, int s) throws IOException
 	{
-		writeShort((short)(s & 0x0ffff));
+		writeShort(out, (short)(s & 0x0ffff));
 	}
 
 	/**
-	 * Writes an array of shorts to the bound stream,
+	 * Writes an array of shorts,
 	 * which is the length of the array as an integer plus each short.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeShortArray(short[] s) throws IOException
+	public void writeShortArray(OutputStream out, short[] s) throws IOException
 	{
-		writeInt(s.length);
+		writeInt(out, s.length);
 		for (int x = 0; x < s.length; x++)
-			writeShort(s[x]);
+			writeShort(out, s[x]);
 	}
 
 	/**
-	 * Writes an array of arrays of shorts to the bound stream,
-	 * which is the length of the array as an integer plus each array of shorts.
-	 * @throws IOException	if an error occurred during the write.
+	 * Writes a character.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeShortArray(short[][] s) throws IOException
+	public void writeChar(OutputStream out, char c) throws IOException
 	{
-		writeInt(s.length);
-		for (int x = 0; x < s.length; x++)
-			writeShortArray(s[x]);
+	    writeShort(out, charToShort(c));
 	}
 
 	/**
-	 * Writes an array of arrays of arrays of shorts to the bound stream,
-	 * which is the length of the array as an integer plus each array of arrays of shorts.
-	 * @throws IOException	if an error occurred during the write.
-	 */
-	public void writeShortArray(short[][][] s) throws IOException
-	{
-		writeInt(s.length);
-		for (int x = 0; x < s.length; x++)
-			writeShortArray(s[x]);
-	}
-
-	/**
-	 * Writes a character to the bound stream.
-	 * @throws IOException	if an error occurred during the write.
-	 */
-	public void writeChar(char c) throws IOException
-	{
-	    writeShort(charToShort(c));
-	}
-
-	/**
-	 * Writes a character array to the bound stream,
+	 * Writes a character array,
 	 * which is the length of the array as an integer plus each character.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeCharArray(char[] c) throws IOException
+	public void writeCharArray(OutputStream out, char[] c) throws IOException
 	{
-		writeInt(c.length);
+		writeInt(out, c.length);
 		for (int x = 0; x < c.length; x++)
-			writeChar(c[x]);
+			writeChar(out, c[x]);
 	}
 
 	/**
-	 * Writes a boolean array to the bound stream,
+	 * Writes a boolean array,
 	 * which is the length of the array as an integer plus each boolean grouped into integer bits.
-	 * @throws IOException	if an error occurred during the write.
+	 * @param out the output stream.
+	 * @throws IOException if an error occurred during the write.
 	 */
-	public void writeBooleanArray(boolean ... b) throws IOException
+	public void writeBooleanArray(OutputStream out, boolean ... b) throws IOException
 	{
 		int[] bbits = new int[(b.length/Integer.SIZE)+((b.length%Integer.SIZE)!=0?1:0)];
 		for (int i = 0; i < b.length; i++)
 			if (b[i])
 				bbits[i/Integer.SIZE] |= 1 << (i%Integer.SIZE);
 
-		writeInt(b.length);
+		writeInt(out, b.length);
 		for (int i = 0; i < bbits.length; i++)
-			writeInt(bbits[i]);
+			writeInt(out, bbits[i]);
 	}
 
-	/**
-	 * Closes the stream bound to this writer.
-	 * @throws IOException	if an error occurs closing the stream.
-	 */
-	public final void close() throws IOException
+	private static short charToShort(char c)
 	{
-		out.close();
+	    return (short)(c & 0xFFFF);
 	}
-	
+
 	private static int shortToBytes(short s, boolean endianMode, byte[] out, int offset)
 	{
 		for (int x = endianMode ? 0 : SIZEOF_SHORT-1; endianMode ? (x < SIZEOF_SHORT) : (x >= 0); x += endianMode ? 1 : -1)
@@ -518,12 +425,11 @@ public class SerialWriter implements AutoCloseable
 		return offset + SIZEOF_LONG;
 	}
 
+	private static final ThreadLocal<Cache> CACHE = ThreadLocal.withInitial(()->new Cache());
+	
 	private static class Cache
 	{
-		private static final ThreadLocal<Cache> LOCAL = ThreadLocal.withInitial(()->new Cache());
-
 		byte[] buffer;
-		
 		private Cache()
 		{
 			this.buffer = new byte[8];

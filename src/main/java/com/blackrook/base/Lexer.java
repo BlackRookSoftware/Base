@@ -2385,7 +2385,7 @@ public class Lexer
 		private String streamName;
 		private String lexeme;
 		private String lineText;
-		private int tokenLineNumber;
+		private int lineNumber;
 		private int type;
 		
 		public Token(String streamName, String lexeme, String lineText, int tokenLineNumber, int type)
@@ -2393,7 +2393,7 @@ public class Lexer
 			this.streamName = streamName;
 			this.lexeme = lexeme;
 			this.lineText = lineText;
-			this.tokenLineNumber = tokenLineNumber;
+			this.lineNumber = tokenLineNumber;
 			this.type = type;
 		}
 
@@ -2418,7 +2418,7 @@ public class Lexer
 		 */
 		public int getLine()
 		{
-			return tokenLineNumber;
+			return lineNumber;
 		}
 
 		/** @return this token's lexeme. */
@@ -2459,7 +2459,7 @@ public class Lexer
 				sb.append("(").append(streamName).append(") ");
 			
 			sb.append("Id: ").append(type);
-			sb.append(", Line: ").append(tokenLineNumber);
+			sb.append(", Line: ").append(lineNumber);
 			
 			if (lexeme != null)
 				sb.append(", Lexeme: \"").append(lexeme).append('"');

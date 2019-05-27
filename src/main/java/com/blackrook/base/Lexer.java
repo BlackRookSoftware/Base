@@ -1224,15 +1224,6 @@ public class Lexer
 	}
 
 	/**
-	 * Reads the next line from the stack, and sets it as current.
-	 * @return true if this line was handled by this function and the Lexer should continue to the next line, or false if not.
-	 */
-	protected boolean processLine(String line) throws IOException
-	{
-		return false;
-	}
-
-	/**
 	 * Called when the lexer wants to create a token,
 	 * but the lexeme of the token may cause this token to be a different type.
 	 * <p>
@@ -1332,10 +1323,8 @@ public class Lexer
 	
 		if (currentLine == null || charNumber == currentLine.length())
 		{
-			String line;
+			String line = readerStack.readLine();
 			lineNumber++;
-			while (processLine(line = readerStack.readLine()))
-				lineNumber++;
 			if (line != null)
 				currentLine = line + '\n';
 			else 

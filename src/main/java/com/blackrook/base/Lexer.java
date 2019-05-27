@@ -1336,7 +1336,10 @@ public class Lexer
 			lineNumber++;
 			while (processLine(line = readerStack.readLine()))
 				lineNumber++;
-			currentLine = line + '\n';
+			if (line != null)
+				currentLine = line + '\n';
+			else 
+				currentLine = null;
 			charNumber = 0;
 		}
 	

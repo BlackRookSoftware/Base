@@ -237,7 +237,7 @@ public class LoggingFactory
 	
 	/**
 	 * A convenience method for creating a Console-appending logger factory.
-	 * <p>Equivalent to: <code>new LoggingFactory(new ConsoleLogger(), LogLevel.DEBUG)</code></p>
+	 * <p>Equivalent to: <code>new LoggingFactory(LogLevel.DEBUG, new ConsoleLogger())</code></p>
 	 * @return the new logging factory.
 	 */
 	public static LoggingFactory createConsoleLoggingFactory()

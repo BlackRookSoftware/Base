@@ -363,21 +363,47 @@ public class LoggingFactory
 		return new LoggerDelegate(fullyQualified ? clz.getName() : clz.getSimpleName());
 	}
 	
+	// These logging methods are set up this way to not incur potentially expensive string processing until
+	// we are sure they will be logged!
+	
 	/**
 	 * Adds a log message to the logger queue.
 	 * @param level the target logging level.
 	 * @param source the source name.
-	 * @param message the message to output.
 	 * @param throwable the throwable to dump, if any.
+	 * @param message the message to output.
 	 */
-	private void addLog(LogLevel level, LogLevel localLevel, String source, String message, Throwable throwable)
+	private void addLog(LogLevel level, LogLevel localLevel, String source, Throwable throwable, Object message)
 	{
 		if (!checkLoggingLevel(level, localLevel))
 			return;
 		
 		synchronized (outQueue)
 		{
-			outQueue.add(new LogObject(new Date(), level, source, message, throwable));
+			outQueue.add(new LogObject(new Date(), level, source, String.valueOf(message), throwable));
+			if (loggerThread == null || !loggerThread.isAlive())
+				(loggerThread = new LoggerThread()).start();
+			outQueue.notify();
+			try {Thread.sleep(0L);} catch (InterruptedException e) {}
+		}
+	}
+
+	/**
+	 * Adds a log message to the logger queue.
+	 * @param level the target logging level.
+	 * @param source the source name.
+	 * @param throwable the throwable to dump, if any.
+	 * @param message the message to output.
+	 * @param args the parameterized arguments for formatting.
+	 */
+	private void addLogF(LogLevel level, LogLevel localLevel, String source, Throwable throwable, String message, Object ...args)
+	{
+		if (!checkLoggingLevel(level, localLevel))
+			return;
+		
+		synchronized (outQueue)
+		{
+			outQueue.add(new LogObject(new Date(), level, source, String.format(message, args), throwable));
 			if (loggerThread == null || !loggerThread.isAlive())
 				(loggerThread = new LoggerThread()).start();
 			outQueue.notify();
@@ -466,109 +492,109 @@ public class LoggingFactory
 		@Override
 		public void fatal(Object message)
 		{
-			addLog(LogLevel.FATAL, localLevel, source, String.valueOf(message), null);
+			addLog(LogLevel.FATAL, localLevel, source, null, String.valueOf(message));
 		}
 
 		@Override
 		public void fatalf(String formatString, Object... args)
 		{
-			addLog(LogLevel.FATAL, localLevel, source, String.format(formatString, args), null);
+			addLogF(LogLevel.FATAL, localLevel, source, null, formatString, args);
 		}
 
 		@Override
 		public void fatal(Throwable t, Object message)
 		{
-			addLog(LogLevel.FATAL, localLevel, source, String.valueOf(message), t);
+			addLog(LogLevel.FATAL, localLevel, source, t, String.valueOf(message));
 		}
 
 		@Override
 		public void fatalf(Throwable t, String formatString, Object... args)
 		{
-			addLog(LogLevel.FATAL, localLevel, source, String.format(formatString, args), t);
+			addLogF(LogLevel.FATAL, localLevel, source, t, formatString, args);
 		}
 
 		@Override
 		public void severe(Object message)
 		{
-			addLog(LogLevel.SEVERE, localLevel, source, String.valueOf(message), null);
+			addLog(LogLevel.SEVERE, localLevel, source, null, String.valueOf(message));
 		}
 
 		@Override
 		public void severef(String formatString, Object... args)
 		{
-			addLog(LogLevel.SEVERE, localLevel, source, String.format(formatString, args), null);
+			addLogF(LogLevel.SEVERE, localLevel, source, null, formatString, args);
 		}
 
 		@Override
 		public void severe(Throwable t, Object message)
 		{
-			addLog(LogLevel.SEVERE, localLevel, source, String.valueOf(message), t);
+			addLog(LogLevel.SEVERE, localLevel, source, t, String.valueOf(message));
 		}
 
 		@Override
 		public void severef(Throwable t, String formatString, Object... args)
 		{
-			addLog(LogLevel.SEVERE, localLevel, source, String.format(formatString, args), t);
+			addLogF(LogLevel.SEVERE, localLevel, source, t, formatString, args);
 		}
 
 		@Override
 		public void error(Object message)
 		{
-			addLog(LogLevel.ERROR, localLevel, source, String.valueOf(message), null);
+			addLog(LogLevel.ERROR, localLevel, source, null, String.valueOf(message));
 		}
 
 		@Override
 		public void errorf(String formatString, Object... args)
 		{
-			addLog(LogLevel.ERROR, localLevel, source, String.format(formatString, args), null);
+			addLogF(LogLevel.ERROR, localLevel, source, null, formatString, args);
 		}
 
 		@Override
 		public void error(Throwable t, Object message)
 		{
-			addLog(LogLevel.ERROR, localLevel, source, String.valueOf(message), t);
+			addLog(LogLevel.ERROR, localLevel, source, t, String.valueOf(message));
 		}
 
 		@Override
 		public void errorf(Throwable t, String formatString, Object... args)
 		{
-			addLog(LogLevel.ERROR, localLevel, source, String.format(formatString, args), t);
+			addLogF(LogLevel.ERROR, localLevel, source, t, formatString, args);
 		}
 
 		@Override
 		public void warn(Object message)
 		{
-			addLog(LogLevel.WARNING, localLevel, source, String.valueOf(message), null);
+			addLog(LogLevel.WARNING, localLevel, source, null, String.valueOf(message));
 		}
 
 		@Override
 		public void warnf(String formatString, Object... args)
 		{
-			addLog(LogLevel.WARNING, localLevel, source, String.format(formatString, args), null);
+			addLogF(LogLevel.WARNING, localLevel, source, null, formatString, args);
 		}
 
 		@Override
 		public void info(Object message)
 		{
-			addLog(LogLevel.INFO, localLevel, source, String.valueOf(message), null);
+			addLog(LogLevel.INFO, localLevel, source, null, String.valueOf(message));
 		}
 
 		@Override
 		public void infof(String formatString, Object... args)
 		{
-			addLog(LogLevel.INFO, localLevel, source, String.format(formatString, args), null);
+			addLogF(LogLevel.INFO, localLevel, source, null, formatString, args);
 		}
 
 		@Override
 		public void debug(Object message)
 		{
-			addLog(LogLevel.DEBUG, localLevel, source, String.valueOf(message), null);
+			addLog(LogLevel.DEBUG, localLevel, source, null, String.valueOf(message));
 		}
 
 		@Override
 		public void debugf(String formatString, Object... args)
 		{
-			addLog(LogLevel.DEBUG, localLevel, source, String.format(formatString, args), null);
+			addLogF(LogLevel.DEBUG, localLevel, source, null, formatString, args);
 		}
 
 	}

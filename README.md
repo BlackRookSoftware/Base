@@ -22,10 +22,18 @@ that are otherwise not especially covered by Java's main libraries.
 End users are encouraged to pick and choose, mix and match.
 
 
+### Why?
+
+A lot of "commons" libraries are bulky and they can become a big dependency if all of it is included.
+In encouraging users to copy what they want piece-by-piece (and having a license that does not necessarily
+prohibit it), this not only eliminates the size problem, but reduces the overhead of using a larger library.   
+
+
 ### Library
 
 Contained in this release is a series of classes that should be used for
 common functions. The javadocs contain basic outlines of each package's contents.
+
 
 ### Compiling with Ant
 

@@ -200,6 +200,17 @@ public class SerialReader
 	}
 
 	/**
+	 * Reads a byte as a boolean value.
+	 * @param in the input stream to read from.
+	 * @return a boolean value.
+	 * @throws IOException if an error occurred during the read.
+	 */
+	public boolean readBoolean(InputStream in) throws IOException
+	{
+		return readByte(in) != 0;
+	}
+
+	/**
 	 * Reads in an array of boolean values.
 	 * Basically reads an integer length which is the amount of booleans and then reads 
 	 * in an integer at a time scanning bits for the boolean values.

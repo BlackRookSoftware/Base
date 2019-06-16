@@ -45,6 +45,16 @@ public final class TestUtils
 	}
 
 	/**
+	 * Static methods annotated with this are executed after the class's tests are executed.
+	 */
+	@Target({ElementType.METHOD})
+	@Retention(RetentionPolicy.RUNTIME)
+	public @interface AfterAllTests
+	{
+		// Empty
+	}
+
+	/**
 	 * Methods annotated with this are executed before every test.
 	 */
 	@Target({ElementType.METHOD})
@@ -227,6 +237,7 @@ public final class TestUtils
 		private Class<C> type;
 		private String name;
 		private List<Method> beforeAll;
+		private List<Method> afterAll;
 		private List<Method> beforeEach;
 		private List<Method> afterEach;
 		private List<TestMethod> testMethods;
@@ -235,6 +246,7 @@ public final class TestUtils
 		{
 			this.type = cls;
 			this.beforeAll = new LinkedList<>();
+			this.afterAll = new LinkedList<>();
 			this.beforeEach = new LinkedList<>();
 			this.afterEach = new LinkedList<>();
 			
@@ -253,6 +265,8 @@ public final class TestUtils
 				{
 					if (m.isAnnotationPresent(BeforeAllTests.class))
 						this.beforeAll.add(m);
+					if (m.isAnnotationPresent(AfterAllTests.class))
+						this.afterAll.add(m);
 					continue;
 				}
 					
@@ -318,6 +332,20 @@ public final class TestUtils
 			else for (TestMethod tm : testMethods)
 				pass &= tm.call(create(type), out, err, verbose);
 
+			if (afterAll != null)
+			{
+				long afterAllTime = System.currentTimeMillis();
+				if (verbose) out.println(name+": AfterAll Start.");
+				for (Method aa : afterAll) try {invokeBlind(aa, null);} catch (Throwable t)
+				{
+					err.println(name+": AfterAll Exception.");
+					t.printStackTrace(err);
+					return false;
+				}
+				if (verbose) out.println(name+": AfterAll End.");
+				if (verbose) out.println(name+": AfterAll: " + (System.currentTimeMillis() - afterAllTime) / 1000.0 + " secs");
+			}
+			
 			out.println(name+": " + (pass?"PASS":"FAIL") + " " + (System.currentTimeMillis() - millis) / 1000.0 + " secs");
 			return pass;
 		}

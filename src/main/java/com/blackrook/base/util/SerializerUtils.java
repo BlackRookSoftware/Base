@@ -31,6 +31,7 @@ public final class SerializerUtils
 	 * Converts a series of bytes to a short.
 	 * @param b				the bytes to convert.
 	 * @param endianMode	the endian mode of the bytes.
+	 * @return the resultant value.
 	 */
 	public static short bytesToShort(byte[] b, boolean endianMode)
 	{
@@ -47,6 +48,7 @@ public final class SerializerUtils
 	 * Converts a series of bytes to an integer.
 	 * @param b				the bytes to convert.
 	 * @param endianMode	the endian mode of the bytes.
+	 * @return the resultant value.
 	 */
 	public static int bytesToInt(byte[] b, boolean endianMode)
 	{
@@ -63,6 +65,7 @@ public final class SerializerUtils
 	 * Converts a series of bytes to a long.
 	 * @param b				the bytes to convert.
 	 * @param endianMode	the endian mode of the bytes.
+	 * @return the resultant value.
 	 */
 	public static long bytesToLong(byte[] b, boolean endianMode)
 	{
@@ -79,6 +82,7 @@ public final class SerializerUtils
 	 * Converts a series of bytes to a 32-bit float.
 	 * @param b				the bytes to convert.
 	 * @param endianMode	the endian mode of the bytes.
+	 * @return the resultant value.
 	 */
 	public static float bytesToFloat(byte[] b, boolean endianMode)
 	{
@@ -89,6 +93,7 @@ public final class SerializerUtils
 	 * Converts a series of bytes to a 64-bit float.
 	 * @param b				the bytes to convert.
 	 * @param endianMode	the endian mode of the bytes.
+	 * @return the resultant value.
 	 */
 	public static double bytesToDouble(byte[] b, boolean endianMode)
 	{

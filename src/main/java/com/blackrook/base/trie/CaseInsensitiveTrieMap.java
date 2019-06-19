@@ -9,6 +9,7 @@ package com.blackrook.base.trie;
 /**
  * An implementation of a Trie that stores strings, case-insensitively.
  * @author Matthew Tropiano
+ * @param <V> the value type that this holds.
  */
 public class CaseInsensitiveTrieMap<V extends Object> extends StringTrieMap<V>
 {

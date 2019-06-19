@@ -250,6 +250,7 @@ public final class ReflectUtils
 	 * Checks if a method is a "setter" method.
 	 * This checks its name, if it returns a void value or the source class type (chain setters), takes one argument, and if it is <b>public</b>.
 	 * @param method the method to inspect.
+	 * @param sourceType the source type.
 	 * @return true if so, false if not.
 	 */
 	public static boolean isSetter(Method method, Class<?> sourceType)

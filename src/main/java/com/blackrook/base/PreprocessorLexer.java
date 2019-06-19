@@ -150,6 +150,7 @@ public class PreprocessorLexer extends Lexer
 		 * 		procure a relative path.
 		 * @param path the stream path from the include directive.
 		 * @return the path to a possible resource, or null if no possible path is available.
+		 * @throws IOException if an error occurs procuring a potential stream.
 		 */
 		public String getIncludeResourcePath(String streamName, String path) throws IOException;
 	
@@ -158,6 +159,7 @@ public class PreprocessorLexer extends Lexer
 		 * By default, this attempts to open a file at the provided path.
 		 * @param path the resolved stream path from the include directive.
 		 * @return an open {@link InputStream} for the requested resource, or null if not found.
+		 * @throws IOException if an error occurs opening a stream.
 		 */
 		public InputStream getIncludeResource(String path) throws IOException;
 	
@@ -419,6 +421,7 @@ public class PreprocessorLexer extends Lexer
 	
 	/**
 	 * Called when a full directive is read and needs to be processed.
+	 * @param streamName the stream name.
 	 * @param lineNumber the line number.
 	 * @param directiveLine the directive line to process.
 	 */

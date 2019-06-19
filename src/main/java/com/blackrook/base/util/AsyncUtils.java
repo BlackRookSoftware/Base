@@ -118,6 +118,8 @@ public final class AsyncUtils
 		
 		/**
 		 * Called when a Process task reports an error.
+		 * @param type the {@link StreamType}.
+		 * @param exception the exception that happened.
 		 */
 		void onStreamError(StreamType type, Exception exception);
 	}
@@ -141,6 +143,7 @@ public final class AsyncUtils
 	 * @param process the process to monitor - it should already be started.
 	 * @param stdin the Standard IN stream. If null, no input is provided.
 	 * @param stdout the Standard OUT/ERROR stream. If null, no output is provided.
+	 * @param listeners the error listeners to add, if any.
 	 * @return the new instance.
 	 */
 	public static Instance<Integer> spawn(Process process, InputStream stdin, OutputStream stdout, ProcessStreamErrorListener ... listeners)
@@ -158,6 +161,7 @@ public final class AsyncUtils
 	 * @param stdin the Standard IN stream. If null, no input is provided.
 	 * @param stdout the Standard OUT stream. If null, no output is provided.
 	 * @param stderr the Standard ERROR stream. If null, no error output is provided.
+	 * @param listeners the error listeners to add, if any.
 	 * @return the new instance.
 	 */
 	public static Instance<Integer> spawn(

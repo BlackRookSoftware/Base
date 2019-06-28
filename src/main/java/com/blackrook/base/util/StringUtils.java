@@ -129,8 +129,6 @@ public final class StringUtils
 					}
 					break;
 			}
-			
-			i++;
 		}
 		
 		if (state == STATE_DECODE)

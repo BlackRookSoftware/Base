@@ -87,6 +87,7 @@ public final class AsyncFactory
 	
 	/**
 	 * Creates an AsyncFactory and new underlying thread pool.
+	 * @param threadNamePrefix the name prefix for each thread in the pool.
 	 * @param coreSize the core amount of threads.
 	 * @param maxSize the maximum amount of threads to create.
 	 * @param keepAlive the keep-alive time for the threads past the core amount that are idle.

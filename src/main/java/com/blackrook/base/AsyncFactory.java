@@ -4,11 +4,12 @@
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
-package com.blackrook.base.util;
+package com.blackrook.base;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -22,106 +23,115 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Utility class for simple asynchronous tasks.
+ * Factory for crateing a thread pool that handles asynchronous tasks.
  * <p>This class uses an internal thread pool to facilitate asynchronous operations. All {@link Instance}s that the
  * "spawn" methods return are handles to the running routine, and are equivalent to {@link Future}s.
  * @author Matthew Tropiano
  */
-public final class AsyncUtils
+public final class AsyncFactory
 {
 	/** Default amount of core threads. */
-	public static final int DEFAULT_CORE_SIZE = 5;
+	public static final int DEFAULT_CORE_SIZE = 2;
 	
 	/** Default amount of max threads. */
-	public static final int DEFAULT_MAX_SIZE = 10;
+	public static final int DEFAULT_MAX_SIZE = 20;
 
 	/** Default keepalive time. */
 	public static final long DEFAULT_KEEPALIVE_TIME = 5;
 
 	/** Default keepalive time unit. */
 	public static final TimeUnit DEFAULT_KEEPALIVE_TIMEUNIT = TimeUnit.SECONDS;
-	
-	// The static Thread Pool.
-	private static final ThreadPoolExecutor threadPool;
-	
+
+	/** The thread name prefix. */
+	public static final String DEFAULT_THREADNAME_PREFIX = "AsyncFactoryThread-";
+
+	/** Async factory counter. */
+	private static AtomicLong AsyncFactoryID;
+
 	// No Process Error Listeners
 	private static final ProcessStreamErrorListener[] NO_LISTENERS = new ProcessStreamErrorListener[0];
 
-	static {
-		threadPool = new ThreadPoolExecutor(
-			DEFAULT_CORE_SIZE, 
-			DEFAULT_MAX_SIZE, 
-			DEFAULT_KEEPALIVE_TIME, 
-			DEFAULT_KEEPALIVE_TIMEUNIT,
+	/** Thread pool. */
+	private ThreadPoolExecutor threadPool;
+	
+	/**
+	 * Creates an AsyncFactory and new underlying thread pool with default values.
+	 */
+	public AsyncFactory()
+	{
+		this(
+			DEFAULT_CORE_SIZE,
+			DEFAULT_MAX_SIZE,
+			DEFAULT_KEEPALIVE_TIME,
+			DEFAULT_KEEPALIVE_TIMEUNIT
+		);	
+	}
+	
+	/**
+	 * Creates an AsyncFactory and new underlying thread pool.
+	 * @param coreSize the core amount of threads.
+	 * @param maxSize the maximum amount of threads to create.
+	 * @param keepAlive the keep-alive time for the threads past the core amount that are idle.
+	 * @param keepAliveTimeUnit the time unit for the keep-alive.
+	 */
+	public AsyncFactory(int coreSize, int maxSize, long keepAlive, TimeUnit keepAliveTimeUnit)
+	{
+		this(
+			DEFAULT_THREADNAME_PREFIX + AsyncFactoryID.getAndIncrement() + "-",
+			coreSize, 
+			maxSize, 
+			keepAlive, 
+			keepAliveTimeUnit
+		);	
+	}
+	
+	/**
+	 * Creates an AsyncFactory and new underlying thread pool.
+	 * @param coreSize the core amount of threads.
+	 * @param maxSize the maximum amount of threads to create.
+	 * @param keepAlive the keep-alive time for the threads past the core amount that are idle.
+	 * @param keepAliveTimeUnit the time unit for the keep-alive.
+	 */
+	public AsyncFactory(String threadNamePrefix, int coreSize, int maxSize, long keepAlive, TimeUnit keepAliveTimeUnit)
+	{
+		this(
+			coreSize, 
+			maxSize, 
+			keepAlive, 
+			keepAliveTimeUnit,
 			new LinkedBlockingQueue<Runnable>(),
-			new DefaultThreadFactory()
-		);
+			new DefaultThreadFactory(threadNamePrefix)
+		);	
 	}
 	
 	/**
-	 * Sets the amount of core threads in the thread pool.
-	 * @param size the amount of threads.
+	 * Creates an AsyncFactory and new underlying thread pool.
+	 * @param coreSize the core amount of threads.
+	 * @param maxSize the maximum amount of threads to create.
+	 * @param keepAlive the keep-alive time for the threads past the core amount that are idle.
+	 * @param keepAliveTimeUnit the time unit for the keep-alive.
+	 * @param workQueue the work queue for all incoming work that can't be allocated to a thread.
+	 * @param threadFactory the thread factory to use.
 	 */
-	public static void setCoreThreads(int size)
+	public AsyncFactory(int coreSize, int maxSize, long keepAlive, TimeUnit keepAliveTimeUnit, BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory)
 	{
-		threadPool.setCorePoolSize(size);
+		this(new ThreadPoolExecutor(
+			coreSize, 
+			maxSize, 
+			keepAlive, 
+			keepAliveTimeUnit,
+			workQueue,
+			threadFactory
+		));	
 	}
 	
 	/**
-	 * Sets the max amount of threads that the thread pool can expand to.
-	 * @param size the amount of threads.
+	 * Creates an AsyncFactory that wraps an existing thread pool.
+	 * @param threadPool the thread pool to wrap.
 	 */
-	public static void setMaxThreads(int size)
+	public AsyncFactory(ThreadPoolExecutor threadPool)
 	{
-		threadPool.setMaximumPoolSize(size);
-	}
-
-	/**
-	 * Sets how long the threads created past the core amount will stay alive until they are ended. 
-	 * @param time the time amount.
-	 * @param unit the time unit.
-	 */
-	public static void setKeepAliveTime(long time, TimeUnit unit)
-	{
-		threadPool.setKeepAliveTime(time, unit);
-	}
-
-	/**
-	 * A listener interface for {@link Monitorable} tasks. 
-	 */
-	@FunctionalInterface
-	public static interface MonitorableListener
-	{
-		/**
-		 * Called when the task reports a progress or message change in any way.
-		 * @param indeterminate if true, progress is indeterminate - calculating it may result in a bad value.
-		 * @param current the current progress.
-		 * @param maximum the maximum progress.
-		 * @param message the message.
-		 */
-		void onProgressChange(boolean indeterminate, double current, double maximum, String message);
-	}
-
-	/**
-	 * A listener interface for {@link Process} tasks. 
-	 */
-	@FunctionalInterface
-	public static interface ProcessStreamErrorListener
-	{
-		/** The stream type that produced the error. */
-		enum StreamType
-		{
-			STDIN,
-			STDOUT,
-			STDERR
-		}
-		
-		/**
-		 * Called when a Process task reports an error.
-		 * @param type the {@link StreamType}.
-		 * @param exception the exception that happened.
-		 */
-		void onStreamError(StreamType type, Exception exception);
+		this.threadPool = threadPool;
 	}
 
 	/**
@@ -129,7 +139,7 @@ public final class AsyncUtils
 	 * @param process the process to monitor - it should already be started.
 	 * @return the new instance.
 	 */
-	public static Instance<Integer> spawn(Process process)
+	public Instance<Integer> spawn(Process process)
 	{
 		return spawn(process, null, null, null, NO_LISTENERS);
 	}
@@ -146,7 +156,7 @@ public final class AsyncUtils
 	 * @param listeners the error listeners to add, if any.
 	 * @return the new instance.
 	 */
-	public static Instance<Integer> spawn(Process process, InputStream stdin, OutputStream stdout, ProcessStreamErrorListener ... listeners)
+	public Instance<Integer> spawn(Process process, InputStream stdin, OutputStream stdout, ProcessStreamErrorListener ... listeners)
 	{
 		return spawn(process, stdin, stdout, stdout, listeners);
 	}
@@ -164,7 +174,7 @@ public final class AsyncUtils
 	 * @param listeners the error listeners to add, if any.
 	 * @return the new instance.
 	 */
-	public static Instance<Integer> spawn(
+	public Instance<Integer> spawn(
 		Process process, 
 		final InputStream stdin,
 		final OutputStream stdout, 
@@ -219,7 +229,7 @@ public final class AsyncUtils
 	 * @param runnable the runnable to use.
 	 * @return the new instance.
 	 */
-	public static Instance<Void> spawn(Runnable runnable)
+	public Instance<Void> spawn(Runnable runnable)
 	{
 		return spawn(runnable, (Void)null);
 	}
@@ -230,7 +240,7 @@ public final class AsyncUtils
 	 * @param result the result to set on completion.
 	 * @return the new instance.
 	 */
-	public static <T> Instance<T> spawn(Runnable runnable, T result)
+	public <T> Instance<T> spawn(Runnable runnable, T result)
 	{
 		Instance<T> out = new RunnableInstance<T>(runnable, result);
 		threadPool.execute(out);
@@ -242,7 +252,7 @@ public final class AsyncUtils
 	 * @param callable the callable to use.
 	 * @return the new instance.
 	 */
-	public static <T> Instance<T> spawn(Callable<T> callable)
+	public <T> Instance<T> spawn(Callable<T> callable)
 	{
 		Instance<T> out = new CallableInstance<T>(callable);
 		threadPool.execute(out);
@@ -255,14 +265,14 @@ public final class AsyncUtils
 	 * @param cancellable the cancellable to use.
 	 * @return the new instance.
 	 */
-	public static <T> Instance<T> spawn(Cancellable<T> cancellable)
+	public <T> Instance<T> spawn(Cancellable<T> cancellable)
 	{
 		Instance<T> out = new CancellableInstance<T>(cancellable);
 		threadPool.execute(out);
 		return out;
 	}
 
-	private static int relay(InputStream in, OutputStream out) throws IOException
+	private int relay(InputStream in, OutputStream out) throws IOException
 	{
 		int total = 0;
 		int buf = 0;
@@ -277,12 +287,50 @@ public final class AsyncUtils
 		return total;
 	}
 
-	private static void close(AutoCloseable c)
+	private void close(AutoCloseable c)
 	{
 		if (c == null) return;
 		try { c.close(); } catch (Exception e){}
 	}
 	
+	/**
+	 * A listener interface for {@link Monitorable} tasks. 
+	 */
+	@FunctionalInterface
+	public static interface MonitorableListener
+	{
+		/**
+		 * Called when the task reports a progress or message change in any way.
+		 * @param indeterminate if true, progress is indeterminate - calculating it may result in a bad value.
+		 * @param current the current progress.
+		 * @param maximum the maximum progress.
+		 * @param message the message.
+		 */
+		void onProgressChange(boolean indeterminate, double current, double maximum, String message);
+	}
+
+	/**
+	 * A listener interface for {@link Process} tasks. 
+	 */
+	@FunctionalInterface
+	public static interface ProcessStreamErrorListener
+	{
+		/** The stream type that produced the error. */
+		enum StreamType
+		{
+			STDIN,
+			STDOUT,
+			STDERR
+		}
+		
+		/**
+		 * Called when a Process task reports an error.
+		 * @param type the {@link StreamType}.
+		 * @param exception the exception that happened.
+		 */
+		void onStreamError(StreamType type, Exception exception);
+	}
+
 	/**
 	 * A {@link Cancellable} that can listen for changes/progress reported by it.
 	 * @param <T> the result type.
@@ -654,20 +702,20 @@ public final class AsyncUtils
 	 */
 	private static class DefaultThreadFactory implements ThreadFactory
 	{
-		private static final String THREAD_NAME = "AsyncUtilsThread-";
-
 		private AtomicLong threadId;
+		private String threadNamePrefix;
 
-		private DefaultThreadFactory()
+		private DefaultThreadFactory(String threadNamePrefix)
 		{
-			threadId = new AtomicLong(0L);
+			this.threadId = new AtomicLong(0L);
+			this.threadNamePrefix = threadNamePrefix;
 		}
 
 		@Override
 		public Thread newThread(Runnable r)
 		{
 			Thread out = new Thread(r);
-			out.setName(THREAD_NAME + threadId.getAndIncrement());
+			out.setName(threadNamePrefix + threadId.getAndIncrement());
 			out.setDaemon(true);
 			out.setPriority(Thread.NORM_PRIORITY);
 			return out;

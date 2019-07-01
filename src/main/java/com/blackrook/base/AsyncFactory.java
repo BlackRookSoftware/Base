@@ -46,7 +46,7 @@ public final class AsyncFactory
 	public static final String DEFAULT_THREADNAME_PREFIX = "AsyncFactoryThread-";
 
 	/** Async factory counter. */
-	private static AtomicLong AsyncFactoryID = new AtomicLong(0L);
+	private static final AtomicLong AsyncFactoryID = new AtomicLong(0L);
 
 	// No Process Error Listeners
 	private static final ProcessStreamErrorListener[] NO_LISTENERS = new ProcessStreamErrorListener[0];

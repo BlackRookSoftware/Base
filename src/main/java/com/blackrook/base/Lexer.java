@@ -1343,26 +1343,6 @@ public class Lexer
 	}
 	
 	/**
-	 * @return if we are in a delimiter break.
-	 */
-	protected boolean isOnDelimBreak()
-	{
-		if (getCurrentStream() != null)
-			return getCurrentStream().isOnDelimBreak();
-		else
-			return false;
-	}
-	
-	/**
-	 * Clears if we are in a delimiter break.
-	 */
-	protected void clearDelimBreak()
-	{
-		if (getCurrentStream() != null)
-			getCurrentStream().clearDelimBreak();
-	}
-	
-	/**
 	 * Sets if we are in a delimiter break.
 	 * @param delimChar the delimiter character that starts the break.
 	 */
@@ -1803,6 +1783,11 @@ public class Lexer
 			/** Saved character for delimiter test. */
 			private int delimBreakChar;
 
+			/** If true, we are in a newline break. */
+			private boolean holdBreak;
+			/** Saved character for hold break. */
+			private int holdBreakChar;
+
 			/**
 			 * Creates a new stream.
 			 * @param name the stream name.
@@ -1816,21 +1801,10 @@ public class Lexer
 				this.charIndex = 0;
 			}
 			
-			private boolean isOnDelimBreak()
-			{
-				return delimBreak;
-			}
-			
 			private void setDelimBreak(int breakChar)
 			{
 				delimBreakChar = breakChar;
 				delimBreak = true;
-			}
-
-			private void clearDelimBreak()
-			{
-				delimBreakChar = -1;
-				delimBreak = false;
 			}
 
 			private String getStreamName()
@@ -1848,24 +1822,53 @@ public class Lexer
 				return charIndex;
 			}
 			
+			private boolean isNewlineChar(int c)
+			{
+				return c == '\r' || c == '\n';
+			}
+			
 			/**
 			 * Reads the next char from the stream.
+			 * Eats all manner of newline combos into '\n'.
 			 * @return the line read.
 			 * @throws IOException if a line cannot be read.
 			 */
 			private int readChar() throws IOException
 			{
 				int c;
-				if (delimBreak)
+				if (holdBreak)
+				{
+					c = holdBreakChar;
+					holdBreakChar = -1;
+					holdBreak = false;
+					return c;
+				}
+				else if (delimBreak)
 				{
 					c = delimBreakChar;
-					clearDelimBreak();
+					delimBreakChar = -1;
+					delimBreak = false;
 					return c;
 				}
 				else
+				{
 					c = reader.read();
+					boolean newline = false;
+					while (isNewlineChar(c))
+					{
+						newline = true;
+						c = reader.read();
+						if (!isNewlineChar(c))
+						{
+							holdBreakChar = c;
+							holdBreak = true;
+						}
+					}
+					if (newline)
+						c = (int)NEWLINE;
+				}
 				
-				if (c == (int)'\n')
+				if (c == (int)NEWLINE)
 				{
 					line++;
 					charIndex = 0;

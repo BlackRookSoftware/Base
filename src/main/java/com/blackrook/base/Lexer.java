@@ -30,7 +30,7 @@ import java.util.Set;
  * <p>
  * Other implementations of this class may manipulate the stack as well (such as ones that do in-language stream inclusion).
  * <p>
- * If the system property <code>com.blackrook.base.Lexer.debug</code> is set to <code>true</code>, this does debugging output to {@link System#out}.
+ * If the system property <code>com.tameif.tame.struct.Lexer.debug</code> is set to <code>true</code>, this does debugging output to {@link System#out}.
  * <p>
  * Lexer functions are NOT thread-safe.
  * @author Matthew Tropiano
@@ -157,10 +157,7 @@ public class Lexer
 	 */
 	public Token nextToken() throws IOException
 	{
-		String streamName = readerStack.getCurrentStreamName();
-		int lineNumber = readerStack.getCurrentLineNumber();
-		int charIndex = readerStack.getCurrentLineCharacterIndex();
-		
+		int charIndex = 0;
 		boolean breakloop = false;
 		while (!breakloop)
 		{
@@ -186,6 +183,7 @@ public class Lexer
 						if (kernel.willEmitStreamBreak())
 						{
 							setState(Kernel.TYPE_END_OF_STREAM);
+							charIndex = readerStack.getCurrentLineCharacterIndex();
 							breakloop = true;
 						}
 						close(readerStack.pop());
@@ -195,6 +193,7 @@ public class Lexer
 						if (kernel.willEmitNewlines())
 						{
 							setState(Kernel.TYPE_DELIM_NEWLINE);
+							charIndex = readerStack.getCurrentLineCharacterIndex();
 							breakloop = true;
 						}
 					}
@@ -203,6 +202,7 @@ public class Lexer
 						if (kernel.willEmitSpaces())
 						{
 							setState(Kernel.TYPE_DELIM_SPACE);
+							charIndex = readerStack.getCurrentLineCharacterIndex();
 							breakloop = true;
 						}
 					}
@@ -211,6 +211,7 @@ public class Lexer
 						if (kernel.willEmitTabs())
 						{
 							setState(Kernel.TYPE_DELIM_TAB);
+							charIndex = readerStack.getCurrentLineCharacterIndex();
 							breakloop = true;
 						}
 					}
@@ -220,42 +221,50 @@ public class Lexer
 					else if (isPoint(c) && isDelimiterStart(c))
 					{
 						setState(Kernel.TYPE_POINT);
+						charIndex = readerStack.getCurrentLineCharacterIndex();
 						saveChar(c);
 					}
 					else if (isPoint(c) && !isDelimiterStart(c))
 					{
 						setState(Kernel.TYPE_FLOAT);
+						charIndex = readerStack.getCurrentLineCharacterIndex();
 						saveChar(c);
 					}
 					else if (isStringStart(c))
 					{
 						setState(Kernel.TYPE_STRING);
+						charIndex = readerStack.getCurrentLineCharacterIndex();
 						setStringStartAndEnd(c);
 					}
 					else if (isRawStringStart(c))
 					{
 						setState(Kernel.TYPE_RAWSTRING);
+						charIndex = readerStack.getCurrentLineCharacterIndex();
 						setMultilineStringStartAndEnd(c);
 					}
 					else if (isDelimiterStart(c))
 					{
 						setState(Kernel.TYPE_DELIMITER);
+						charIndex = readerStack.getCurrentLineCharacterIndex();
 						saveChar(c);
 					}
 					else if (c == '0')
 					{
 						setState(Kernel.TYPE_HEX_INTEGER0);
+						charIndex = readerStack.getCurrentLineCharacterIndex();
 						saveChar(c);
 					}
 					else if (isDigit(c))
 					{
 						setState(Kernel.TYPE_NUMBER);
+						charIndex = readerStack.getCurrentLineCharacterIndex();
 						saveChar(c);
 					}
 					// anything else starts an identifier.
 					else
 					{
 						setState(Kernel.TYPE_IDENTIFIER);
+						charIndex = readerStack.getCurrentLineCharacterIndex();
 						saveChar(c);
 					}
 					break; // end Kernel.TYPE_START_OF_LEXER
@@ -1198,6 +1207,8 @@ public class Lexer
 		Token out = null;
 		if (getState() != Kernel.TYPE_END_OF_LEXER)
 		{
+			String streamName = readerStack.getCurrentStreamName();
+			int lineNumber = readerStack.getCurrentLineNumber();
 			out = new Token(streamName, type, lexeme, lineNumber, charIndex);
 			modifyType(out);
 			setState(Kernel.TYPE_UNKNOWN);
@@ -1909,7 +1920,7 @@ public class Lexer
 		/** Reserved token type: Raw String (never returned). */
 		public static final int TYPE_RAWSTRING = 				-16;
 		/** Reserved token type: Delimiter (never returned). */
-		public static final int TYPE_DELIMITER = 				-18;
+		public static final int TYPE_DELIMITER = 				-17;
 		/** Reserved token type: Point state (never returned). */
 		public static final int TYPE_POINT = 					-19;
 		/** Reserved token type: Floating point state (never returned). */

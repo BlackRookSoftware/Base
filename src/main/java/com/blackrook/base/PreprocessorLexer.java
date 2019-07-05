@@ -152,7 +152,7 @@ public class PreprocessorLexer extends Lexer
 		 * @return the path to a possible resource, or null if no possible path is available.
 		 * @throws IOException if an error occurs procuring a potential stream.
 		 */
-		public String getIncludeResourcePath(String streamName, String path) throws IOException;
+		String getIncludeResourcePath(String streamName, String path) throws IOException;
 	
 		/**
 		 * Returns an open {@link InputStream} for a path when the parser needs a resource.
@@ -161,7 +161,7 @@ public class PreprocessorLexer extends Lexer
 		 * @return an open {@link InputStream} for the requested resource, or null if not found.
 		 * @throws IOException if an error occurs opening a stream.
 		 */
-		public InputStream getIncludeResource(String path) throws IOException;
+		InputStream getIncludeResource(String path) throws IOException;
 	
 	}
 
@@ -379,7 +379,10 @@ public class PreprocessorLexer extends Lexer
 					else if (c == END_OF_STREAM)
 						breakloop = true;
 					else if (c == '\n')
+					{
+						lineBeginning = true;
 						breakloop = true;
+					}
 					else if (c == '\\')
 						state = STATE_ESCAPE;
 					else

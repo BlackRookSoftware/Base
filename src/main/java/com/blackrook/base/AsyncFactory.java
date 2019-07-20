@@ -224,7 +224,6 @@ public final class AsyncFactory
 		return out;
 	}
 	
-
 	/**
 	 * Spawns a new asynchronous task from a {@link Runnable}.
 	 * @param runnable the runnable to use.
@@ -232,16 +231,16 @@ public final class AsyncFactory
 	 */
 	public Instance<Void> spawn(Runnable runnable)
 	{
-		return spawn(runnable, (Void)null);
+		return spawn((Void)null, runnable);
 	}
 
 	/**
 	 * Spawns a new asynchronous task from a {@link Runnable}.
-	 * @param runnable the runnable to use.
 	 * @param result the result to set on completion.
+	 * @param runnable the runnable to use.
 	 * @return the new instance.
 	 */
-	public <T> Instance<T> spawn(Runnable runnable, T result)
+	public <T> Instance<T> spawn(T result, Runnable runnable)
 	{
 		Instance<T> out = new RunnableInstance<T>(runnable, result);
 		threadPool.execute(out);

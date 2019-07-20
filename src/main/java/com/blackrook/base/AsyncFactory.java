@@ -70,6 +70,21 @@ public final class AsyncFactory
 	/**
 	 * Creates an AsyncFactory and new underlying thread pool.
 	 * @param coreSize the core amount of threads.
+	 */
+	public AsyncFactory(int coreSize)
+	{
+		this(
+			DEFAULT_THREADNAME_PREFIX + AsyncFactoryID.getAndIncrement() + "-",
+			coreSize, 
+			coreSize, 
+			DEFAULT_KEEPALIVE_TIME, 
+			DEFAULT_KEEPALIVE_TIMEUNIT
+		);	
+	}
+	
+	/**
+	 * Creates an AsyncFactory and new underlying thread pool.
+	 * @param coreSize the core amount of threads.
 	 * @param maxSize the maximum amount of threads to create.
 	 * @param keepAlive the keep-alive time for the threads past the core amount that are idle.
 	 * @param keepAliveTimeUnit the time unit for the keep-alive.

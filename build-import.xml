@@ -247,7 +247,7 @@
 
 	<!-- Test -->
 
-	<target name="test" depends="compile.test" if="test.src.dir.available">
+	<target name="test" depends="compile.test" if="test.src.dir.available, project.testclass.main">
 		<java classpath="${project.classpath}${path.separator}${bin.dir}" classname="${project.testclass.main}" fork="true" failonerror="true">
 			<arg value="${project.testclass}"/>
 		</java>

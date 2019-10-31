@@ -357,8 +357,8 @@ public final class ReflectUtils
 
 	/**
 	 * Creates a new instance of a class from a class type.
-	 * This essentially calls {@link Class#newInstance()}, but wraps the call
-	 * in a try/catch block that only throws an exception if something goes wrong.
+	 * This essentially calls {@link Class#getDeclaredConstructor(Class...)} with no arguments 
+	 * and {@link Class#newInstance()}, but wraps the call in a try/catch block that only throws an exception if something goes wrong.
 	 * @param <T> the return object type.
 	 * @param clazz the class type to instantiate.
 	 * @return a new instance of an object.

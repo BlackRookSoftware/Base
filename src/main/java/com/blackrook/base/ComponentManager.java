@@ -17,6 +17,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
@@ -91,7 +92,7 @@ public final class ComponentManager
 	/**
 	 * This annotation denotes that the annotated parameter will, on construction, will be passed
 	 * the dependent class that requires this component. The parameter type must be {@link Class}.
-	 * <p>This must be used with a parameter in a {@link ComponentConstructor}-annotated constructor or 
+	 * <p>This must be used with a parameter in a {@link NonSingleton} {@link ComponentConstructor}-annotated constructor or 
 	 * a {@link ComponentProvider}-annotated method in a {@link ComponentFactory}. 
 	 */
 	@Target({ElementType.PARAMETER})
@@ -101,7 +102,8 @@ public final class ComponentManager
 	/**
 	 * This annotation denotes a sort order value for classes that share a type with this one.
 	 * All created classes are grouped by parent types, and getting a list of them returns them in a sorted order.
-	 * <p>This must be used with a {@link Component}-annotated class or a {@link ComponentProvider}-annotated method in a {@link ComponentFactory}.
+	 * <p>This must be used with a {@link Singleton} {@link Component}-annotated class or 
+	 * a {@link ComponentProvider}-annotated method in a {@link ComponentFactory}.
 	 * An ordering of <code>0</code> is used for classes without this annotation. 
 	 */
 	@Target({ElementType.PARAMETER})
@@ -135,34 +137,270 @@ public final class ComponentManager
 	 */
 	private static class Provider
 	{
-		private Class<?> type;
-		
+		private Class<?> constructingType;
 		private Constructor<?> constructor;
+
 		private Class<?> factoryClass;
 		private Method factoryMethod;
 		
+		private Parameter[] parameters;
 		private Class<?>[] parameterTypes;
 		
 		Provider(Class<?> type, Constructor<?> constructor)
 		{
-			this.type = type;
+			this.constructingType = type;
 			this.constructor = constructor;
 			this.factoryClass = null;
 			this.factoryMethod = null;
+			this.parameters = constructor.getParameters();
 			this.parameterTypes = constructor.getParameterTypes();
 		}
 		
 		Provider(Class<?> type, Class<?> factoryClass, Method factoryMethod)
 		{
-			this.type = type;
+			this.constructingType = null;
 			this.constructor = null;
 			this.factoryClass = factoryClass;
 			this.factoryMethod = factoryMethod;
+			this.parameters = factoryMethod.getParameters();
 			this.parameterTypes = factoryMethod.getParameterTypes();
 		}
 
+		boolean isSingleton()
+		{
+			return 
+				(factoryMethod != null && factoryMethod.isAnnotationPresent(Singleton.class))
+				|| (constructor != null && (constructingType.isAnnotationPresent(Singleton.class) || constructingType.isAnnotationPresent(ComponentFactory.class)));
+		}
+		
+		Class<?> classToProvide()
+		{
+			return constructingType == null ? factoryMethod.getReturnType() : constructingType;
+		}
+		
+		Object provide(Object factoryInstance, Object... params)
+		{
+			Class<?> classToCreate = classToProvide();
+			if (constructor != null)
+			{
+				try {
+					return constructor.newInstance(params);
+				} catch (InstantiationException e) {
+					throw new ComponentException("Class " + classToCreate.getName() + " could not be constructed.", e);
+				} catch (IllegalAccessException e) {
+					throw new ComponentException("Class " + classToCreate.getName() + " could not be constructed - can't access.", e);
+				} catch (IllegalArgumentException e) {
+					throw new ComponentException("[INTERNAL ERROR] Bad number of parameters or parameter types.", e);
+				} catch (InvocationTargetException e) {
+					throw new ComponentException("Class " + classToCreate.getName() + " could not be constructed - exception in constructor.", e);
+				}
+			}
+			else
+			{
+				try {
+					return factoryMethod.invoke(factoryInstance, params);
+				} catch (IllegalAccessException e) {
+					throw new ComponentException("Class " + classToCreate.getName() + " could not be provided - can't access factory method.", e);
+				} catch (IllegalArgumentException e) {
+					throw new ComponentException("[INTERNAL ERROR] Bad number of parameters or parameter types.", e);
+				} catch (InvocationTargetException e) {
+					throw new ComponentException("Class " + classToCreate.getName() + " could not be constructed - exception in factory method.", e);
+				}
+			}
+
+		}
+		
 	}
 	
+	// Created for intermediate scan, discarded afterward.
+	private static class Blueprint
+	{
+		/** Map of class to Singleton instance. */
+		private Map<Class<?>, Provider> providerMap;
+		/** Set of singleton types. */
+		private Set<Class<?>> singletonTypes;
+		/** Set of non-singleton types. */
+		private Set<Class<?>> nonSingletonTypes;
+		
+		Blueprint()
+		{
+			this.providerMap = new HashMap<>();
+			this.singletonTypes = new HashSet<>();
+			this.nonSingletonTypes = new HashSet<>();
+		}
+		
+		public Provider resolveProvider(Class<?> clazz)
+		{
+			Provider out = providerMap.get(clazz);
+			if (out == null)
+				throw new ComponentException("[INTERNAL ERROR]: Class " + clazz.getName() + " has no provider!");
+			return out;
+		}
+	
+		// Scans all classes.
+		private void scanClass(String className)
+		{
+			try {
+				Class<?> clz = Class.forName(className);
+		
+				boolean component = clz.isAnnotationPresent(Component.class);
+				boolean factory = clz.isAnnotationPresent(ComponentFactory.class);
+		
+				if (component)
+				{
+					if (factory)
+						throw new ComponentException("Class \"" + clz.getName() + "\" cannot be both a @Component and @ComponentFactory. Must be one or the other.");
+					scanComponent(clz);
+				}
+				else if (factory)
+				{
+					scanComponentFactory(clz);
+				}
+				else
+					return;
+				
+			} catch (ClassNotFoundException e) {
+				throw new ComponentException("Cannot find class " + className + " in classpath.", e);
+			}
+		}
+	
+		// Scans a single component.
+		private void scanComponent(Class<?> clz)
+		{
+			if (providerMap.containsKey(clz) && singletonTypes.contains(clz))
+			{
+				Provider p = providerMap.get(clz);
+				if (p.constructor != null)
+					throw new ComponentException("Singleton Component \"" + clz.getName() + "\" is already being provided by... itself?? [INTERNAL ERROR]");
+				else
+					throw new ComponentException("Singleton Component \"" + clz.getName() + "\" is already being provided by component factory method " + p.factoryClass.getName() + "." + p.factoryMethod.getName());
+			}
+		
+			boolean single = clz.isAnnotationPresent(Singleton.class);
+			boolean nonsingle = clz.isAnnotationPresent(NonSingleton.class);
+			
+			if (!(single ^ nonsingle))
+				throw new ComponentException("Component \"" + clz.getName() + "\" not specified as @Singleton or @NonSingleton. Must be one or the other, and not both.");
+		
+			Constructor<?> found = null;
+			for (Constructor<?> cons : clz.getConstructors())
+			{
+				if (cons.isAnnotationPresent(ComponentConstructor.class))
+				{
+					if (found != null)
+						throw new ComponentException("Component \"" + clz.getName() + "\" already had a constructor with a @ComponentConstructor annotation.");
+					
+					found = cons;
+					if ((cons.getModifiers() & Modifier.PUBLIC) == 0)
+						throw new ComponentException("Component \"" + clz.getName() + "\" cannot have a non-public constructor with a @ComponentConstructor annotation.");
+				}
+			}
+			
+			if (found == null)
+			{
+				try{
+					found = clz.getDeclaredConstructor();
+				} catch (NoSuchMethodException | SecurityException e) {
+					throw new ComponentException("Component \"" + clz.getName() + "\" does not a have a constructor annotated with @ComponentConstructor, nor an implicit, accessible public constructor!");
+				}
+			}
+		
+			providerMap.put(clz, new Provider(clz, found));
+			
+			if (single)
+				singletonTypes.add(clz);
+			else // non-single
+				nonSingletonTypes.add(clz);
+		}
+	
+		// Scans a single component factory.
+		private void scanComponentFactory(Class<?> clz)
+		{
+			if (clz.isAnnotationPresent(Singleton.class))
+				throw new ComponentException("Component Factory \"" + clz.getName() + "\" implies @Singleton - annotation is redundant.");
+			if (clz.isAnnotationPresent(NonSingleton.class))
+				throw new ComponentException("Component Factory \"" + clz.getName() + "\" cannot be @NonSingleton - factories are always singleton.");
+
+			if (providerMap.containsKey(clz))
+				throw new ComponentException("Component Factory \"" + clz.getName() + "\" cannot be provided by another source, only itself.");
+		
+			Constructor<?> found = null;
+			for (Constructor<?> cons : clz.getConstructors())
+			{
+				if (cons.isAnnotationPresent(ComponentConstructor.class))
+				{
+					if (found != null)
+						throw new ComponentException("Component Factory \"" + clz.getName() + "\" already had a constructor with a @ComponentConstructor annotation.");
+					
+					found = cons;
+					if ((cons.getModifiers() & Modifier.PUBLIC) == 0)
+						throw new ComponentException("Component Factory \"" + clz.getName() + "\" cannot have a non-public constructor with a @ComponentConstructor annotation.");
+				}
+			}
+			
+			if (found == null)
+			{
+				try{
+					found = clz.getDeclaredConstructor();
+				} catch (NoSuchMethodException | SecurityException e) {
+					throw new ComponentException("Component Factory \"" + clz.getName() + "\" does not a have an implicit, accessible public constructor!");
+				}
+			}
+			
+			providerMap.put(clz, new Provider(clz, found));
+			singletonTypes.add(clz);
+			
+			for (Method method : clz.getDeclaredMethods())
+			{
+				if (method.isAnnotationPresent(ComponentProvider.class))
+				{
+					int modifiers = method.getModifiers();
+					if ((modifiers & Modifier.PUBLIC) == 0)
+						throw new ComponentException("Component Factory \"" + clz.getName() + "\" cannot have a non-public factory method with a @ComponentProvider annotation.");
+		
+					Class<?> type = method.getReturnType();
+					
+					if (type == Void.TYPE || type == Void.class)
+						throw new ComponentException("Component Factory \"" + clz.getName() + "\" cannot have a factory method with a @ComponentProvider annotation that returns void: " + method.getName());
+					if (type.isAnnotationPresent(Component.class))
+						throw new ComponentException("Component Factory method \"" + clz.getName() + "." + method.getName() + "\" provides a @Component-annotated class, which could already provide itself!");
+					if (type.isAnnotationPresent(ComponentFactory.class))
+						throw new ComponentException("Component Factory method \"" + clz.getName() + "." + method.getName() + "\" provides a @ComponentFactory-annotated class, which could already provide itself!.");
+		
+					// static methods do not require an instance
+					if ((modifiers & Modifier.STATIC) != 0)
+						providerMap.put(type, new Provider(type, null, method));
+					else
+						providerMap.put(type, new Provider(type, clz, method));
+					
+					boolean single = method.isAnnotationPresent(Singleton.class);
+					boolean nonsingle = method.isAnnotationPresent(NonSingleton.class);
+		
+					if (!(single ^ nonsingle))
+						throw new ComponentException("Component Factory method \"" + clz.getName() + "." + method.getName() + "\" not specified as @Singleton or @NonSingleton. Must be one or the other, and not both.");
+		
+					if (single)
+						singletonTypes.add(type);
+					else // non-single
+						nonSingletonTypes.add(type);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Creates a new component manager from a set of class package names.
+	 * @param packages the list of packages.
+	 * @return a new ComponentManager with all of the classes/components instantiated.
+	 * @throws ComponentException if a component instantiation or setup encounters a problem.
+	 */
+	public static ComponentManager create(String... packages)
+	{
+		ComponentManager out = new ComponentManager();
+		out.createComponents(out.scanPackages(packages));
+		return out;
+	}
+
 	/**
 	 * Concatenates a set of arrays together, such that the contents of each
 	 * array are joined into one array. Null arrays are skipped.
@@ -451,264 +689,140 @@ public final class ComponentManager
 		}
 	}
 
-	/**
-	 * Creates a new instance of a class from a class type.
-	 * This essentially calls {@link Class#getDeclaredConstructor(Class...)} with no arguments 
-	 * and {@link Class#newInstance()}, but wraps the call in a try/catch block that only throws an exception if something goes wrong.
-	 * @param <T> the return object type.
-	 * @param clazz the class type to instantiate.
-	 * @return a new instance of an object.
-	 * @throws RuntimeException if instantiation cannot happen, either due to
-	 * a non-existent constructor or a non-visible constructor.
-	 */
-	private static <T> T create(Class<T> clazz)
-	{
-		Object out = null;
-		try {
-			out = clazz.getDeclaredConstructor().newInstance();
-		} catch (SecurityException ex) {
-			throw new RuntimeException(ex);
-		} catch (IllegalAccessException e) {
-			throw new RuntimeException(e);
-		} catch (InstantiationException e) {
-			throw new RuntimeException(e);
-		} catch (IllegalArgumentException e) {
-			throw new RuntimeException(e);
-		} catch (InvocationTargetException e) {
-			throw new RuntimeException(e);
-		} catch (NoSuchMethodException e) {
-			throw new RuntimeException(e);
-		}
-		
-		return clazz.cast(out);
-	}
-
-	/**
-	 * Creates a new instance of a class from a class type.
-	 * This essentially calls {@link Class#newInstance()}, but wraps the call
-	 * in a try/catch block that only throws an exception if something goes wrong.
-	 * @param <T> the return object type.
-	 * @param constructor the constructor to call.
-	 * @param params the constructor parameters.
-	 * @return a new instance of an object created via the provided constructor.
-	 * @throws RuntimeException if instantiation cannot happen, either due to
-	 * a non-existent constructor or a non-visible constructor.
-	 */
-	@SuppressWarnings("unchecked")
-	private static <T> T construct(Constructor<T> constructor, Object ... params)
-	{
-		Object out = null;
-		try {
-			out = (T)constructor.newInstance(params);
-		} catch (IllegalArgumentException e) {
-			throw new RuntimeException(e);
-		} catch (InstantiationException e) {
-			throw new RuntimeException(e);
-		} catch (IllegalAccessException e) {
-			throw new RuntimeException(e);
-		} catch (InvocationTargetException e) {
-			throw new RuntimeException(e);
-		}
-		
-		return (T)out;
-	}
-
 	/*===============================================================*/
 	
-	/** List of root packages in the order to scan. */
-	private String[] packageRoots;
-
-	/** Map of class to Singleton instance. */
-	private Map<Class<?>, Provider> providerMap;
-
-	/** Set of singleton types. */
-	private Set<Class<?>> singletonTypes;
-	/** Set of non-singleton types. */
-	private Set<Class<?>> nonSingletonTypes;
-
 	/** Map of class to Singleton instance. */
 	private Map<Class<?>, Object> singletonMap;
 	/** Map of class to list of similar-typed singleton components. */
 	private Map<Class<?>, List<Object>> singletonTypeMap;
 
-	/**
-	 * Creates a new component manager from a set of class package names.
-	 * @param packages the list of packages.
-	 * @return a new ComponentManager with all of the classes/components instantiated.
-	 * @throws ComponentException if a component instantiation or setup encounters a problem.
-	 */
-	public static ComponentManager create(String... packages)
-	{
-		ComponentManager out = new ComponentManager(packages);
-		out.scanPackages();
-		// TODO out.createComponents();
-		return out;
-	}
-	
 	// Creates the component manager.
-	private ComponentManager(String[] packageRoots)
+	private ComponentManager()
 	{
-		this.packageRoots = packageRoots;
-		this.providerMap = new HashMap<>();
-		this.singletonTypes = new HashSet<>();
-		this.nonSingletonTypes = new HashSet<>();
 		this.singletonMap = new HashMap<>();
 		this.singletonTypeMap = new HashMap<>();
 	}
 	
 	// Scans all classes.
-	private void scanPackages()
+	private Blueprint scanPackages(String[] packageRoots)
 	{
+		Blueprint out = new Blueprint();
 		for (String packageName : packageRoots)
 			for (String className : getClasses(packageName))
-				scanClass(className);
+				out.scanClass(className);
+		return out;
 	}
 	
-	// Scans all classes.
-	private void scanClass(String className)
+	// Creates all components.
+	private void createComponents(Blueprint blueprint)
 	{
-		try {
-			Class<?> clz = Class.forName(className);
+		Set<Class<?>> classesInstantiating = new HashSet<>();
+		// Only need to crawl through singletons.
+		for (Class<?> componentClass : blueprint.singletonTypes)
+			createOrGet(blueprint, classesInstantiating, blueprint.resolveProvider(componentClass), null);
+	}
 
-			boolean component = clz.isAnnotationPresent(Component.class);
-			boolean factory = clz.isAnnotationPresent(ComponentFactory.class);
+	private void addSingletonInstanceType(Class<?> clazz, Object instance)
+	{
+		List<Object> list;
+		if ((list = singletonTypeMap.get(clazz)) == null)
+			singletonTypeMap.put(clazz, list = new ArrayList<Object>(4));
+		list.add(instance);
+	}
+	
+	private void addSingletonInstanceTypeTree(Class<?> clazz, Object instance)
+	{
+		if (clazz == null)
+			return;
+		addSingletonInstanceType(clazz, instance);
+		for (Class<?> iface : clazz.getInterfaces())
+			addSingletonInstanceTypeTree(iface, instance);
+		addSingletonInstanceTypeTree(clazz.getSuperclass(), instance);
+	}
+	
+	@SuppressWarnings("unchecked")
+	private <T> T createOrGet(Blueprint blueprint, Set<Class<?>> classesInstantiating, Provider creatingProvider, Class<?> dependentClass)
+	{
+		Class<?> classToCreate = creatingProvider.classToProvide();
+		
+		if (classesInstantiating.contains(classToCreate))
+			throw new ComponentException("Circular dependency: Class " + classToCreate.getName() + " is already being constructed.");
+		
+		// return singleton if already made.
+		if (singletonMap.containsKey(classToCreate))
+			return (T)singletonMap.get(classToCreate);
+		
+		if (!blueprint.singletonTypes.contains(classToCreate) && !blueprint.nonSingletonTypes.contains(classToCreate))
+			throw new ComponentException("Class " + classToCreate.getName() + " is not a component nor component factory.");
+		
+		classesInstantiating.add(classToCreate);
 
-			if (component)
+		// Instantiate provider parameters.
+		List<Object> objects = new ArrayList<Object>();
+		Parameter[] parameters = creatingProvider.parameters;
+		Class<?>[] parameterTypes = creatingProvider.parameterTypes;
+		for (int i = 0; i < parameters.length; i++)
+		{
+			if (!creatingProvider.isSingleton() 
+				&& parameterTypes[i] == Class.class 
+				&& parameters[i].isAnnotationPresent(ConstructingClass.class))
 			{
-				if (factory)
-					throw new ComponentException("Class \"" + clz.getName() + "\" cannot be both a @Component and @ComponentFactory. Must be one or the other.");
-				scanComponent(clz);
-			}
-			else if (factory)
-			{
-				scanComponentFactory(clz);
+				objects.add(dependentClass);
 			}
 			else
-				return;
-			
-		} catch (ClassNotFoundException e) {
-			throw new ComponentException("Cannot find class " + className + " in classpath.", e);
+			{
+				Provider fetchingProvider = blueprint.resolveProvider(parameterTypes[i]);				
+				objects.add(createOrGet(
+					blueprint,
+					classesInstantiating, 
+					fetchingProvider, 
+					!fetchingProvider.isSingleton() ? classToCreate : null
+				));
+			}
 		}
+		
+		Object[] params = new Object[objects.size()];
+		objects.toArray(params);
+
+		T created = (T)creatingProvider.provide(
+			creatingProvider.factoryClass != null ? createOrGet(blueprint, classesInstantiating, blueprint.resolveProvider(creatingProvider.factoryClass), null) : null, 
+			params
+		);
+		
+		if (classToCreate.isAnnotationPresent(Singleton.class) || classToCreate.isAnnotationPresent(ComponentFactory.class))
+		{
+			singletonMap.put(classToCreate, created);
+			addSingletonInstanceTypeTree(classToCreate, created);
+		}
+		
+		classesInstantiating.remove(classToCreate);
+		return (T)created;
 	}
 
-	// Scans a single component.
-	private void scanComponent(Class<?> clz)
+	/**
+	 * Retrieves the singleton instance associated with this class (primary type).
+	 * @param <T> the expected return type.
+	 * @param clazz the desired class.
+	 * @return the associated singleton, or null if no associated singleton instance.
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> T getSingleton(Class<T> clazz)
 	{
-		if (providerMap.containsKey(clz) && singletonTypes.contains(clz))
-		{
-			Provider p = providerMap.get(clz);
-			if (p.constructor != null)
-				throw new ComponentException("Singleton Component \"" + clz.getName() + "\" is already being provided by... itself?? [INTERNAL ERROR]");
-			else
-				throw new ComponentException("Singleton Component \"" + clz.getName() + "\" is already being provided by component factory method " + p.factoryClass.getName() + "." + p.factoryMethod.getName());
-		}
-
-		boolean single = clz.isAnnotationPresent(Singleton.class);
-		boolean nonsingle = clz.isAnnotationPresent(NonSingleton.class);
-		
-		if (single ^ nonsingle)
-			throw new ComponentException("Component \"" + clz.getName() + "\" not specified as @Singleton or @NonSingleton. Must be one or the other, and not both.");
-
-		Constructor<?> found = null;
-		for (Constructor<?> cons : clz.getConstructors())
-		{
-			if (cons.isAnnotationPresent(ComponentConstructor.class))
-			{
-				if (found != null)
-					throw new ComponentException("Component \"" + clz.getName() + "\" already had a constructor with a @ComponentConstructor annotation.");
-				
-				found = cons;
-				if ((cons.getModifiers() & Modifier.PUBLIC) == 0)
-					throw new ComponentException("Component \"" + clz.getName() + "\" cannot have a non-public constructor with a @ComponentConstructor annotation.");
-			}
-		}
-		
-		if (found == null)
-		{
-			try{
-				found = clz.getDeclaredConstructor();
-			} catch (NoSuchMethodException | SecurityException e) {
-				throw new ComponentException("Component \"" + clz.getName() + "\" does not a have an implicit, accessible public constructor!");
-			}
-		}
-
-		providerMap.put(clz, new Provider(clz, found));
-		
-		if (single)
-			singletonTypes.add(clz);
-		else // non-single
-			nonSingletonTypes.add(clz);
+		return (T)singletonMap.get(clazz);
 	}
-	
-	// Scans a single component factory.
-	private void scanComponentFactory(Class<?> clz)
+
+	/**
+	 * Retrieves all created singletons that share the provided type.
+	 * They are returned in the order that their sort order dictates.
+	 * @param <T> the expected return type.
+	 * @param type the desired class type.
+	 * @return the associated singleton, or null if no associated singleton instance.
+	 * @see Ordering
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> Iterable<T> getSingletonsWithType(Class<T> type)
 	{
-		if (providerMap.containsKey(clz))
-			throw new ComponentException("Component Factory \"" + clz.getName() + "\" cannot be provided by another source, only itself.");
-
-		Constructor<?> found = null;
-		for (Constructor<?> cons : clz.getConstructors())
-		{
-			if (cons.isAnnotationPresent(ComponentConstructor.class))
-			{
-				if (found != null)
-					throw new ComponentException("Component Factory \"" + clz.getName() + "\" already had a constructor with a @ComponentConstructor annotation.");
-				
-				found = cons;
-				if ((cons.getModifiers() & Modifier.PUBLIC) == 0)
-					throw new ComponentException("Component Factory \"" + clz.getName() + "\" cannot have a non-public constructor with a @ComponentConstructor annotation.");
-			}
-		}
-		
-		if (found == null)
-		{
-			try{
-				found = clz.getDeclaredConstructor();
-			} catch (NoSuchMethodException | SecurityException e) {
-				throw new ComponentException("Component Factory \"" + clz.getName() + "\" does not a have an implicit, accessible public constructor!");
-			}
-		}
-		
-		providerMap.put(clz, new Provider(clz, found));
-		singletonTypes.add(clz);
-		
-		for (Method method : clz.getDeclaredMethods())
-		{
-			if (method.isAnnotationPresent(ComponentProvider.class))
-			{
-				int modifiers = method.getModifiers();
-				if ((modifiers & Modifier.PUBLIC) == 0)
-					throw new ComponentException("Component Factory \"" + clz.getName() + "\" cannot have a non-public factory method with a @ComponentProvider annotation.");
-
-				Class<?> type = method.getReturnType();
-				
-				if (type == Void.TYPE || type == Void.class)
-					throw new ComponentException("Component Factory \"" + clz.getName() + "\" cannot have a factory method with a @ComponentProvider annotation that returns void: " + method.getName());
-				if (type.isAnnotationPresent(Component.class))
-					throw new ComponentException("Component Factory method \"" + clz.getName() + "." + method.getName() + "\" provides a @Component that provides itself!");
-				if (type.isAnnotationPresent(ComponentFactory.class))
-					throw new ComponentException("Component Factory method \"" + clz.getName() + "." + method.getName() + "\" provides a @ComponentFactory, which is illegal.");
-
-				// static methods do not require an instance
-				if ((modifiers & Modifier.STATIC) != 0)
-					providerMap.put(type, new Provider(type, null, method));
-				else
-					providerMap.put(type, new Provider(type, clz, method));
-				
-				boolean single = method.isAnnotationPresent(Singleton.class);
-				boolean nonsingle = method.isAnnotationPresent(NonSingleton.class);
-
-				if (single ^ nonsingle)
-					throw new ComponentException("Component Factory method \"" + clz.getName() + "." + method.getName() + "\" not specified as @Singleton or @NonSingleton. Must be one or the other, and not both.");
-
-				if (single)
-					singletonTypes.add(type);
-				else // non-single
-					nonSingletonTypes.add(type);
-			}
-		}
-		
+		return (Iterable<T>)singletonTypeMap.get(type);
 	}
-	
-	
+
 }

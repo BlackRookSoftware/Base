@@ -1,18 +1,17 @@
 package com.blackrook.base.componenttest;
 
-import com.blackrook.base.ComponentManager.Component;
-import com.blackrook.base.ComponentManager.ComponentConstructor;
-import com.blackrook.base.ComponentManager.Singleton;
+import com.blackrook.base.ComponentManager;
 import com.blackrook.base.LoggingFactory.Logger;
 
-@Component
-@Singleton
+@ComponentManager.Component
+@ComponentManager.Singleton
+@ComponentManager.Ordering(-1)
 public class FordCar extends Vehicle implements Loggable, Stealable
 {
 	private Logger logger;
 	private Radio radio;
 	
-	@ComponentConstructor
+	@ComponentManager.ComponentConstructor
 	public FordCar(Logger logger, Radio radio)
 	{
 		this.radio = radio;

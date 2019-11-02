@@ -12,7 +12,6 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -29,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
@@ -106,7 +106,7 @@ public final class ComponentManager
 	 * a {@link ComponentProvider}-annotated method in a {@link ComponentFactory}.
 	 * An ordering of <code>0</code> is used for classes without this annotation. 
 	 */
-	@Target({ElementType.PARAMETER})
+	@Target({ElementType.TYPE})
 	@Retention(RetentionPolicy.RUNTIME)
 	public @interface Ordering
 	{
@@ -388,8 +388,11 @@ public final class ComponentManager
 		}
 	}
 
+	/*===============================================================*/
+
 	/**
 	 * Creates a new component manager from a set of class package names.
+	 * Be careful! This will scan <i>EVERY</i> class in the
 	 * @param packages the list of packages.
 	 * @return a new ComponentManager with all of the classes/components instantiated.
 	 * @throws ComponentException if a component instantiation or setup encounters a problem.
@@ -415,7 +418,7 @@ public final class ComponentManager
 			if (a != null)
 				totalLen += a.length;
 		
-		String[] out = (String[])Array.newInstance(String.class, totalLen);
+		String[] out = new String[totalLen];
 		
 		int offs = 0;
 		for (String[] a : arrays)
@@ -691,10 +694,25 @@ public final class ComponentManager
 
 	/*===============================================================*/
 	
+	/**
+	 * Ordered object encapsulation. 
+	 */
+	private static class OrderedObject
+	{
+		int ordering;
+		Object instance;
+		
+		public OrderedObject(int ordering, Object instance)
+		{
+			this.ordering = ordering;
+			this.instance = instance;
+		}
+	}
+	
 	/** Map of class to Singleton instance. */
 	private Map<Class<?>, Object> singletonMap;
 	/** Map of class to list of similar-typed singleton components. */
-	private Map<Class<?>, List<Object>> singletonTypeMap;
+	private Map<Class<?>, List<OrderedObject>> singletonTypeMap;
 
 	// Creates the component manager.
 	private ComponentManager()
@@ -722,15 +740,25 @@ public final class ComponentManager
 			createOrGet(blueprint, classesInstantiating, blueprint.resolveProvider(componentClass), null);
 	}
 
-	private void addSingletonInstanceType(Class<?> clazz, Object instance)
+	private void addSingletonInstanceType(Class<?> clazz, OrderedObject instance)
 	{
-		List<Object> list;
+		List<OrderedObject> list;
 		if ((list = singletonTypeMap.get(clazz)) == null)
-			singletonTypeMap.put(clazz, list = new ArrayList<Object>(4));
+			singletonTypeMap.put(clazz, list = new ArrayList<>(4));
 		list.add(instance);
+
+		// insertion sort.
+		int i = list.size() - 1;
+		OrderedObject temp;
+		while (i > 0 && (temp = list.get(i - 1)).ordering > instance.ordering)
+		{
+			list.set(i - 1, instance);
+			list.set(i, temp);
+			i--;
+		}
 	}
 	
-	private void addSingletonInstanceTypeTree(Class<?> clazz, Object instance)
+	private void addSingletonInstanceTypeTree(Class<?> clazz, OrderedObject instance)
 	{
 		if (clazz == null)
 			return;
@@ -792,7 +820,13 @@ public final class ComponentManager
 		if (classToCreate.isAnnotationPresent(Singleton.class) || classToCreate.isAnnotationPresent(ComponentFactory.class))
 		{
 			singletonMap.put(classToCreate, created);
-			addSingletonInstanceTypeTree(classToCreate, created);
+			
+			int ordering = 0;
+			Ordering orderingAnno;
+			if ((orderingAnno = classToCreate.getAnnotation(Ordering.class)) != null)
+				ordering = orderingAnno.value();
+			
+			addSingletonInstanceTypeTree(classToCreate, new OrderedObject(ordering, created));
 		}
 		
 		classesInstantiating.remove(classToCreate);
@@ -822,7 +856,9 @@ public final class ComponentManager
 	@SuppressWarnings("unchecked")
 	public <T> Iterable<T> getWithType(Class<T> type)
 	{
-		return (Iterable<T>)singletonTypeMap.get(type);
+		return (Iterable<T>)singletonTypeMap.get(type).stream()
+			.map((oo)->oo.instance)
+			.collect(Collectors.toList());
 	}
 
 }

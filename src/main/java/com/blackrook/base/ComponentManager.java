@@ -806,7 +806,7 @@ public final class ComponentManager
 	 * @return the associated singleton, or null if no associated singleton instance.
 	 */
 	@SuppressWarnings("unchecked")
-	public <T> T getSingleton(Class<T> clazz)
+	public <T> T get(Class<T> clazz)
 	{
 		return (T)singletonMap.get(clazz);
 	}
@@ -820,7 +820,7 @@ public final class ComponentManager
 	 * @see Ordering
 	 */
 	@SuppressWarnings("unchecked")
-	public <T> Iterable<T> getSingletonsWithType(Class<T> type)
+	public <T> Iterable<T> getWithType(Class<T> type)
 	{
 		return (Iterable<T>)singletonTypeMap.get(type);
 	}

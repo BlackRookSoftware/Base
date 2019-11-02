@@ -11,11 +11,9 @@ public final class ComponentTest
 	public static void main(String[] args)
 	{
 		ComponentManager manager = ComponentManager.create("com.blackrook.base.componenttest");
-		FordCar car = manager.getSingleton(FordCar.class);
-		Iterable<Drivable> drivables = manager.getSingletonsWithType(Drivable.class);
-		Iterable<Stealable> stealables = manager.getSingletonsWithType(Stealable.class);
-		for (Loggable l : manager.getSingletonsWithType(Loggable.class))
-			l.log("Butts LOL");
-		System.out.println();
+		FordCar car = manager.get(FordCar.class);
+		Iterable<Drivable> drivables = manager.getWithType(Drivable.class);
+		Iterable<Stealable> stealables = manager.getWithType(Stealable.class);
+		manager.getWithType(Loggable.class).forEach((l)->l.log("Butts LOL"));
 	}
 }

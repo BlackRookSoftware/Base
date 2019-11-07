@@ -9,6 +9,7 @@ package com.blackrook.base.util;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -17,7 +18,10 @@ import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 /**
  * HTTP Utilities.
@@ -192,6 +196,198 @@ public final class HTTPUtils
 		
 		return sb.toString();
 	};
+	
+	/**
+	 * Multipart form data.
+	 */
+	public static class MultipartFormData
+	{
+		private static final String ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+		private static final byte[] BOUNDARY_START = 	new byte[]{'-', '-'};
+		private static final byte[] BOUNDARY_CRLF = 	new byte[]{'\r', '\n'};
+		private static final byte[] BOUNDARY_CONTINUE = new byte[]{'\r', '\n', '-', '-'};
+		private static final byte[] BOUNDARY_END = 		new byte[]{'-', '-', '\r', '\n'};
+		
+		/**
+		 * Part data.
+		 */
+		private interface PartData
+		{
+			/**
+			 * @return the disposition name of this part (usually a "file name").
+			 */
+	        String getDispositionName();
+
+	        /**
+	         * @return the content type (MIME-type) of this part.
+	         */
+	        String getContentType();
+	        
+	        /**
+	         * @return the content length of this part in bytes.
+	         */
+	        long getContentLength();
+	        
+	        /**
+	         * @return the charset encoding of the (presumed string) data in this part (can be null). 
+	         */
+	        String getCharsetName();
+	        
+	        /**
+	         * @return an open input stream to read from this part.
+	         */
+	        InputStream getInputStream();
+		}
+		
+		/**
+		 * A single form part.
+		 */
+		private static class Part
+		{
+			private String name;
+			private PartData data;
+			
+			private Part(String name, PartData data)
+			{
+				this.name = name;
+				this.data = data;
+			}
+		}
+		
+		/** The MIME-Type of the form data. */
+		private String mimeType;
+		/** The form part boundary. */
+		private byte[] boundary;
+		/** List of Parts. */
+		private List<Part> parts;
+		
+		private MultipartFormData() {}
+		
+		/**
+		 * Creates a new FormData object to send in a POST/PATCH/PUT request.
+		 * @param mimeType the form MIME-Type.
+		 * @return a new form object.
+		 */
+		public static MultipartFormData create()
+		{
+			MultipartFormData out = new MultipartFormData();
+			out.mimeType = "multipart/form-data";
+			out.parts = new LinkedList<>();
+			
+			Random r = new Random();
+			StringBuilder sb = new StringBuilder();
+			int dashes = r.nextInt(15) + 10;
+			int letters = r.nextInt(24) + 16;
+			while (dashes-- > 0)
+				sb.append('-');
+			while (letters-- > 0)
+				sb.append(ALPHABET.charAt(r.nextInt(ALPHABET.length())));
+			try {
+				out.boundary = sb.toString().getBytes("ASCII");
+			} catch (UnsupportedEncodingException e) {
+				throw new RuntimeException("JVM does not support ASCII encoding [INTERNAL ERROR].", e);
+			}
+			return out;
+		}
+
+		/**
+		 * Adds a single field to this multipart form.
+		 * @param name the field name.
+		 * @param value the value.
+		 * @return itself, for chaining.
+		 */
+	    public MultipartFormData addField(String name, String value)
+	    {
+	    	byte[] bytes = null;
+			try {
+				bytes = value.getBytes("UTF-8");
+			} catch (UnsupportedEncodingException e) {
+				throw new RuntimeException("JVM does not support UTF-8 encoding [INTERNAL ERROR].", e);
+			}
+			
+	    	final byte[] valuebytes = bytes;
+	    	parts.add(new Part(name, new PartData() 
+	    	{
+	    		private byte[] data = valuebytes;
+	    		
+				@Override
+				public long getContentLength() 
+				{
+					return data.length;
+				}
+
+				@Override
+				public String getDispositionName() 
+				{
+					return "form-data";
+				}
+
+				@Override
+				public String getContentType() 
+				{
+					return "text/plain";
+				}
+				
+				@Override
+				public String getCharsetName() 
+				{
+					return "utf-8";
+				}
+
+				@Override
+				public InputStream getInputStream()
+				{
+					return new ByteArrayInputStream(data);
+				}
+
+			}));
+	    	return this;
+	    }
+	    
+	    public MultipartFormData addTextPart(String mimeType, String data)
+	    {
+	    	// TODO: Finish this.
+	    	return this;
+	    }
+	    
+	    public MultipartFormData addTextPart(String mimeType, String charset, String data)
+	    {
+	    	// TODO: Finish this.
+	    	return this;
+	    }
+	    
+	    public MultipartFormData addFilePart(String mimeType, File data)
+	    {
+	    	// TODO: Finish this.
+	    	return this;
+	    }
+	    
+	    public MultipartFormData addFilePart(String mimeType, String fileName, File data)
+	    {
+	    	// TODO: Finish this.
+	    	return this;
+	    }
+	    
+	    public MultipartFormData addDataPart(String mimeType, byte[] dataIn)
+	    {
+	    	// TODO: Finish this.
+	    	return this;
+	    }
+	    
+	    public MultipartFormData addDataPart(String mimeType, String fileName, byte[] dataIn)
+	    {
+	    	// TODO: Finish this.
+	    	return this;
+	    }
+	    
+	    public MultipartFormData addDataPart(String mimeType, String charset, String fileName, byte[] dataIn)
+	    {
+	    	// TODO: Finish this.
+	    	return this;
+	    }
+	    
+	}
 	
 	/**
 	 * Sends a GET request to an HTTP URL.

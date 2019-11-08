@@ -10,12 +10,16 @@ import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
+import java.net.ProtocolException;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.util.Arrays;
 import java.util.LinkedList;
@@ -204,10 +208,22 @@ public final class HTTPUtils
 	{
 		private static final String ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
-		private static final byte[] BOUNDARY_START = 	new byte[]{'-', '-'};
-		private static final byte[] BOUNDARY_CRLF = 	new byte[]{'\r', '\n'};
-		private static final byte[] BOUNDARY_CONTINUE = new byte[]{'\r', '\n', '-', '-'};
-		private static final byte[] BOUNDARY_END = 		new byte[]{'-', '-', '\r', '\n'};
+		private static final byte[] BOUNDARY_START;
+		private static final byte[] BOUNDARY_CRLF;
+		private static final byte[] BOUNDARY_CONTINUE;
+		private static final byte[] BOUNDARY_END;
+		
+		static
+		{
+			try {
+				BOUNDARY_START = "--".getBytes("ASCII");
+				BOUNDARY_CRLF = "\r\n".getBytes("ASCII");
+				BOUNDARY_CONTINUE = "\r\n--".getBytes("ASCII");
+				BOUNDARY_END = "--\r\n".getBytes("ASCII");
+			} catch (UnsupportedEncodingException e) {
+				throw new RuntimeException("JVM does not support ASCII encoding [INTERNAL ERROR].", e);
+			}
+		}
 		
 		/**
 		 * Part data.
@@ -215,9 +231,9 @@ public final class HTTPUtils
 		private interface PartData
 		{
 			/**
-			 * @return the disposition name of this part (usually a "file name").
+			 * @return the disposition name of this part (usually a "file name") (can be null).
 			 */
-	        String getDispositionName();
+	        String getFileName();
 
 	        /**
 	         * @return the content type (MIME-type) of this part.
@@ -236,8 +252,9 @@ public final class HTTPUtils
 	        
 	        /**
 	         * @return an open input stream to read from this part.
+	         * @throws IOException if an I/O error occurs on read.
 	         */
-	        InputStream getInputStream();
+	        InputStream getInputStream() throws IOException;
 		}
 		
 		/**
@@ -266,7 +283,6 @@ public final class HTTPUtils
 		
 		/**
 		 * Creates a new FormData object to send in a POST/PATCH/PUT request.
-		 * @param mimeType the form MIME-Type.
 		 * @return a new form object.
 		 */
 		public static MultipartFormData create()
@@ -296,94 +312,144 @@ public final class HTTPUtils
 		 * @param name the field name.
 		 * @param value the value.
 		 * @return itself, for chaining.
+		 * @throws IOException if the data can't be encoded.
 		 */
-	    public MultipartFormData addField(String name, String value)
+	    public MultipartFormData addField(String name, String value) throws IOException
 	    {
-	    	byte[] bytes = null;
-			try {
-				bytes = value.getBytes("UTF-8");
-			} catch (UnsupportedEncodingException e) {
-				throw new RuntimeException("JVM does not support UTF-8 encoding [INTERNAL ERROR].", e);
-			}
-			
-	    	final byte[] valuebytes = bytes;
+	    	return addTextPart(name, "text/plain", "utf-8", value);
+	    }
+	    
+		/**
+		 * Adds a single text part to this multipart form.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the text part.
+		 * @param data the text data.
+		 * @return itself, for chaining.
+		 * @throws IOException if the data can't be encoded.
+		 */
+	    public MultipartFormData addTextPart(String name, final String mimeType, final String data) throws IOException
+	    {
+	    	return addTextPart(name, mimeType, "utf-8", data);
+	    }
+	    
+	    /**
+		 * Adds a single text part to this multipart form.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the text part.
+	     * @param charset the charset name for encoding the text.
+		 * @param text the text data.
+		 * @return itself, for chaining.
+		 * @throws IOException if the data can't be encoded.
+	     */
+	    public MultipartFormData addTextPart(String name, final String mimeType, final String charset, final String text) throws IOException
+	    {
+	    	return addDataPart(name, mimeType, charset, null, text.getBytes(charset));
+	    }
+	    
+	    /**
+	     * Adds a file part to this multipart form.
+	     * The name of the file is passed along.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the file part.
+	     * @param data the file data.
+		 * @return itself, for chaining.
+	     */
+	    public MultipartFormData addFilePart(String name, String mimeType, final File data)
+	    {
+	    	return addFilePart(name, mimeType, data.getName(), data);
+	    }
+	    
+	    /**
+	     * Adds a file part to this multipart form.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the file part.
+	     * @param fileName the file name to send (overridden).
+	     * @param data the file data.
+		 * @return itself, for chaining.
+	     */
+	    public MultipartFormData addFilePart(String name, String mimeType, final String fileName, final File data)
+	    {
 	    	parts.add(new Part(name, new PartData() 
 	    	{
-	    		private byte[] data = valuebytes;
-	    		
 				@Override
 				public long getContentLength() 
 				{
-					return data.length;
+					return data.length();
 				}
 
 				@Override
-				public String getDispositionName() 
+				public String getFileName() 
 				{
-					return "form-data";
+					return fileName;
 				}
 
 				@Override
 				public String getContentType() 
 				{
-					return "text/plain";
+					return mimeType;
 				}
 				
 				@Override
 				public String getCharsetName() 
 				{
-					return "utf-8";
+					return null;
+				}
+
+				@Override
+				public InputStream getInputStream() throws IOException
+				{
+					return new FileInputStream(data);
+				}
+			}));
+	    	return this;
+	    }
+	    
+	    public MultipartFormData addDataPart(String name, String mimeType, byte[] dataIn)
+	    {
+	    	// TODO: Finish this.
+	    	return this;
+	    }
+	    
+	    public MultipartFormData addDataPart(String name, String mimeType, String fileName, byte[] dataIn)
+	    {
+	    	// TODO: Finish this.
+	    	return this;
+	    }
+	    
+	    public MultipartFormData addDataPart(String name, String mimeType, String charset, final String fileName, final byte[] dataIn)
+	    {
+	    	parts.add(new Part(name, new PartData() 
+	    	{
+				@Override
+				public long getContentLength() 
+				{
+					return dataIn.length;
+				}
+
+				@Override
+				public String getFileName() 
+				{
+					return fileName;
+				}
+
+				@Override
+				public String getContentType() 
+				{
+					return mimeType;
+				}
+				
+				@Override
+				public String getCharsetName() 
+				{
+					return charset;
 				}
 
 				@Override
 				public InputStream getInputStream()
 				{
-					return new ByteArrayInputStream(data);
+					return new ByteArrayInputStream(dataIn);
 				}
-
 			}));
-	    	return this;
-	    }
-	    
-	    public MultipartFormData addTextPart(String mimeType, String data)
-	    {
-	    	// TODO: Finish this.
-	    	return this;
-	    }
-	    
-	    public MultipartFormData addTextPart(String mimeType, String charset, String data)
-	    {
-	    	// TODO: Finish this.
-	    	return this;
-	    }
-	    
-	    public MultipartFormData addFilePart(String mimeType, File data)
-	    {
-	    	// TODO: Finish this.
-	    	return this;
-	    }
-	    
-	    public MultipartFormData addFilePart(String mimeType, String fileName, File data)
-	    {
-	    	// TODO: Finish this.
-	    	return this;
-	    }
-	    
-	    public MultipartFormData addDataPart(String mimeType, byte[] dataIn)
-	    {
-	    	// TODO: Finish this.
-	    	return this;
-	    }
-	    
-	    public MultipartFormData addDataPart(String mimeType, String fileName, byte[] dataIn)
-	    {
-	    	// TODO: Finish this.
-	    	return this;
-	    }
-	    
-	    public MultipartFormData addDataPart(String mimeType, String charset, String fileName, byte[] dataIn)
-	    {
-	    	// TODO: Finish this.
 	    	return this;
 	    }
 	    
@@ -526,7 +592,6 @@ public final class HTTPUtils
 	 * The connection is closed afterward.
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
@@ -1079,7 +1144,6 @@ public final class HTTPUtils
 	 * @param dataLength the amount of data to send in bytes.
 	 * @param dataContentType if data is not null, this is the content type. If this is null, uses "application/octet-stream".
 	 * @param dataContentEncoding if data is not null, this is the encoding for the written data. Can be null.
-	 * @param defaultResponseEncoding if the response encoding is not specified, use this one.
 	 * @param defaultResponseCharset if the response charset is not specified, use this one.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.

@@ -8,10 +8,10 @@ package com.blackrook.base.util;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -21,7 +21,10 @@ import java.net.HttpURLConnection;
 import java.net.ProtocolException;
 import java.net.SocketTimeoutException;
 import java.net.URL;
+import java.nio.charset.Charset;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -48,13 +51,27 @@ public final class HTTPUtils
 	public static final String HTTP_METHOD_POST = "POST";
 	/** HTTP Method: PUT. */
 	public static final String HTTP_METHOD_PUT = "PUT";
-	/** HTTP Method: PATCH. */
-	public static final String HTTP_METHOD_PATCH = "PATCH";
 
 	private HTTPUtils() {}
 	
-	// Keep alphabetical.
-	private static final String[] VALID_HTTP = new String[]{"http", "https"};
+	private static final Charset UTF8;
+	private static final String[] VALID_HTTP;
+	private static final byte[] URL_RESERVED;
+	private static final byte[] URL_UNRESERVED;
+
+	static
+	{
+		try {
+			UTF8 = Charset.forName("utf-8");
+			// Keep alphabetical.
+			VALID_HTTP = new String[]{"http", "https"};
+			// must be in this order!
+			URL_RESERVED = "!#$%&'()*+,/:;=?@[]".getBytes("utf-8");
+			URL_UNRESERVED = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~".getBytes("utf-8");
+		} catch (UnsupportedEncodingException e) {
+			throw new RuntimeException("JVM does not support ASCII encoding [INTERNAL ERROR].", e);
+		}
+	}
 	
 	/**
 	 * Interface for reading an HTTPResponse from a URL call.
@@ -73,23 +90,858 @@ public final class HTTPUtils
 	}
 
 	/**
+	 * Content body abstraction.
+	 */
+	public interface HTTPContent
+	{
+		/**
+		 * @return the content MIME-type of this content.
+		 */
+		String getContentType();
+
+		/**
+		 * @return the encoded charset of this content (can be null if not text).
+		 */
+		String getCharset();
+
+		/**
+		 * @return the encoding type of this content (like GZIP or somesuch).
+		 */
+		String getEncoding();
+
+		/**
+		 * @return the length of the content in bytes.
+		 */
+		long getLength();
+
+		/**
+		 * @return an input stream for the data.
+		 * @throws IOException if the stream can't be opened.
+		 * @throws SecurityException if the OS forbids opening it.
+		 */
+		InputStream getInputStream() throws IOException;
+
+		/**
+		 * Creates a text blob content body for an HTTP request.
+		 * @param contentType the data's content type.
+		 * @param text the text data.
+		 * @return a content object representing the content.
+		 */
+		static HTTPContent text(String contentType, String text)
+		{
+			try {
+				return new TextContent(contentType, "utf-8", null, text.getBytes("utf-8"));
+			} catch (UnsupportedEncodingException e) {
+				throw new RuntimeException("JVM does not support the UTF-8 charset [INTERNAL ERROR].");
+			}
+		}
+		
+		/**
+		 * Creates a byte blob content body for an HTTP request.
+		 * @param contentType the data's content type.
+		 * @param bytes the byte data.
+		 * @return a content object representing the content.
+		 */
+		static HTTPContent bytes(String contentType, byte[] bytes)
+		{
+			return new BlobContent(contentType, null, bytes);
+		}
+		
+		/**
+		 * Creates a byte blob content body for an HTTP request.
+		 * @param contentType the data's content type.
+		 * @param contentEncoding the data's encoding type (like gzip or what have you, can be null for none).
+		 * @param bytes the byte data.
+		 * @return a content object representing the content.
+		 */
+		static HTTPContent bytes(String contentType, String contentEncoding, byte[] bytes)
+		{
+			return new BlobContent(contentType, contentEncoding, bytes);
+		}
+
+		/**
+		 * Creates a file-based content body for an HTTP request.
+		 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
+		 * @param contentType the file's content type.
+		 * @param file the file to read from.
+		 * @return a content object representing the content.
+		 */
+		static HTTPContent file(String contentType, File file)
+		{
+			return new FileContent(contentType, file);
+		}
+		
+		/**
+		 * Creates a WWW form, URL encoded content body for an HTTP request.
+		 * <p>Note: This is NOT mulitpart form-data content! 
+		 * See {@link MultipartFormContent} for mixed file attachments and fields.
+		 * @param keyValueMap the map of key to value.
+		 * @return a content object representing the content.
+		 */
+		static HTTPContent form(HTTPParameters keyValueMap)
+		{
+			return new FormContent(keyValueMap.map);
+		}
+		
+		/**
+		 * Creates a WWW form, URL encoded content body for an HTTP request.
+		 * <p>Note: This is NOT mulitpart form-data content! 
+		 * See {@link MultipartFormContent} for mixed file attachments and fields.
+		 * @param keyValueMap the map of key to value.
+		 * @return a content object representing the content.
+		 */
+		static MultipartFormContent multipart()
+		{
+			return new MultipartFormContent();
+		}
+		
+	}
+
+	/**
+	 * Contained readers for responses.
+	 */
+	public interface Readers
+	{
+		/**
+		 * An HTTP Reader that reads byte content and returns a decoded String.
+		 * Gets the string contents of the response, decoded using the response's charset.
+		 */
+		HTTPReader<String> STRING_CONTENT_READER = (response) ->
+		{
+			String charset;
+			if ((charset = response.getCharset()) == null)
+				throw new UnsupportedEncodingException("No charset specified.");
+			
+			char[] c = new char[16384];
+			StringBuilder sb = new StringBuilder();
+			InputStreamReader reader = new InputStreamReader(response.getInputStream(), charset);
+
+			int buf = 0;
+			while ((buf = reader.read(c)) >= 0) 
+				sb.append(c, 0, buf);
+			
+			return sb.toString();
+		};
+	}
+	
+	private static class BlobContent implements HTTPContent
+	{
+		private String contentType;
+		private String contentEncoding;
+		private byte[] data;
+		
+		private BlobContent(String contentType, String contentEncoding, byte[] data)
+		{
+			this.contentType = contentType;
+			this.contentEncoding = contentEncoding;
+			this.data = data;
+		}
+		
+		@Override
+		public String getContentType()
+		{
+			return contentType;
+		}
+		
+		@Override
+		public String getCharset()
+		{
+			return null;
+		}
+		
+		@Override
+		public String getEncoding()
+		{
+			return contentEncoding;
+		}
+		
+		@Override
+		public long getLength()
+		{
+			return data.length;
+		}
+		
+		@Override
+		public InputStream getInputStream() throws IOException
+		{
+			return new ByteArrayInputStream(data);
+		}
+		
+	}
+
+	private static class TextContent extends BlobContent
+	{
+		private String contentCharset;
+	
+		private TextContent(String contentType, String contentCharset, String contentEncoding, byte[] data)
+		{
+			super(contentType, contentEncoding, data);
+			this.contentCharset = contentCharset;
+		}
+		
+		@Override
+		public String getCharset()
+		{
+			return contentCharset;
+		}
+		
+	}
+
+	private static class FileContent implements HTTPContent
+	{
+		private String contentType;
+		private File file;
+		
+		private FileContent(String contentType, File file)
+		{
+			this.contentType = contentType;
+			this.file = file;
+		}
+		
+		@Override
+		public String getContentType()
+		{
+			return contentType;
+		}
+	
+		@Override
+		public String getCharset()
+		{
+			return null;
+		}
+	
+		@Override
+		public String getEncoding()
+		{
+			return null;
+		}
+	
+		@Override
+		public long getLength()
+		{
+			return file.length();
+		}
+	
+		@Override
+		public InputStream getInputStream() throws IOException
+		{
+			return new FileInputStream(file);
+		}
+		
+	}
+
+	private static class FormContent extends TextContent
+	{
+		private FormContent(Map<String, List<String>> map)
+		{
+			super("x-www-form-urlencoded", Charset.defaultCharset().displayName(), null, mapToParameterString(map).getBytes());
+		}
+	}
+
+	/**
+	 * Multipart form data.
+	 */
+	public static class MultipartFormContent implements HTTPContent
+	{
+		private static final String ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+	
+		private static final byte[] CRLF;
+		
+		private static final byte[] DISPOSITION_HEADER;
+		private static final byte[] DISPOSITION_NAME;
+		private static final byte[] DISPOSITION_NAME_END;
+		private static final byte[] DISPOSITION_FILENAME;
+		private static final byte[] DISPOSITION_FILENAME_END;
+
+		private static final byte[] TYPE_HEADER;
+		private static final byte[] ENCODING_HEADER;
+
+		private static final int BLUEPRINT_BOUNDARY_START = 0;
+		private static final int BLUEPRINT_PART = 1;
+		private static final int BLUEPRINT_BOUNDARY_MIDDLE = 2;
+		private static final int BLUEPRINT_BOUNDARY_END = 3;
+
+		static
+		{
+			CRLF = "\r\n".getBytes(UTF8);
+			DISPOSITION_HEADER = "Content-Disposition: form-data".getBytes(UTF8);
+			DISPOSITION_NAME = "; name=\"".getBytes(UTF8);
+			DISPOSITION_NAME_END = "\"".getBytes(UTF8);
+			DISPOSITION_FILENAME = "; filename=\"".getBytes(UTF8);
+			DISPOSITION_FILENAME_END = "\"".getBytes(UTF8);
+			TYPE_HEADER = "Content-Type: ".getBytes(UTF8);
+			ENCODING_HEADER = "Content-Transfer-Encoding: ".getBytes(UTF8);
+		}
+		
+		/** The form part first boundary. */
+		private byte[] boundaryFirst;
+		/** The form part middle boundary. */
+		private byte[] boundaryMiddle;
+		/** The form part ending boundary. */
+		private byte[] boundaryEnd;
+		
+		/** List of Parts. */
+		private List<Part> parts;
+		/** Total length. */
+		private long length;
+		
+		private MultipartFormContent() 
+		{
+			this.parts = new LinkedList<>();
+			String boundaryText = generateBoundary();
+			
+			this.boundaryFirst = ("--" + boundaryText + "\r\n").getBytes(UTF8);
+			this.boundaryMiddle = ("\r\n--" + boundaryText + "\r\n").getBytes(UTF8);
+			this.boundaryEnd = ("\r\n--" + boundaryText + "--").getBytes(UTF8);
+			
+			// account for start and end boundary at least.
+			this.length = boundaryFirst.length + boundaryEnd.length;
+		}
+
+		private static String generateBoundary()
+		{
+			Random r = new Random();
+			StringBuilder sb = new StringBuilder();
+			int dashes = r.nextInt(15) + 10;
+			int letters = r.nextInt(24) + 16;
+			while (dashes-- > 0)
+				sb.append('-');
+			while (letters-- > 0)
+				sb.append(ALPHABET.charAt(r.nextInt(ALPHABET.length())));
+			return sb.toString();
+		}
+		
+		// Adds a part and calculates change in length.
+		private void addPart(final Part p)
+		{
+	    	boolean hadOtherParts = !parts.isEmpty();
+	    	parts.add(p);
+	    	length += p.getLength();
+	    	if (hadOtherParts)
+	    		length += boundaryMiddle.length;
+		}
+		
+		/**
+		 * Adds a single field to this multipart form.
+		 * @param name the field name.
+		 * @param value the value.
+		 * @return itself, for chaining.
+		 * @throws IOException if the data can't be encoded.
+		 */
+	    public MultipartFormContent addField(String name, String value) throws IOException
+	    {
+	    	return addTextPart(name, null, value);
+	    }
+	    
+	    /**
+		 * Adds a single text part to this multipart form.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the text part.
+		 * @param text the text data.
+		 * @return itself, for chaining.
+		 * @throws IOException if the data can't be encoded.
+	     */
+	    public MultipartFormContent addTextPart(String name, final String mimeType, final String text) throws IOException
+	    {
+	    	return addDataPart(name, mimeType, null, null, text.getBytes(UTF8));
+	    }
+	    
+	    /**
+	     * Adds a file part to this multipart form.
+	     * The name of the file is passed along.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the file part.
+	     * @param data the file data.
+		 * @return itself, for chaining.
+		 * @throws IllegalArgumentException if data is null or the file cannot be found.
+	     */
+	    public MultipartFormContent addFilePart(String name, String mimeType, final File data)
+	    {
+	    	return addFilePart(name, mimeType, data.getName(), data);
+	    }
+	    
+	    /**
+	     * Adds a file part to this multipart form.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the file part.
+	     * @param fileName the file name to send (overridden).
+	     * @param data the file data.
+		 * @return itself, for chaining.
+		 * @throws IllegalArgumentException if data is null or the file cannot be found.
+	     */
+	    public MultipartFormContent addFilePart(String name, final String mimeType, final String fileName, final File data)
+	    {
+	    	if (data == null)
+	    		throw new IllegalArgumentException("data cannot be null.");
+	    	if (!data.exists())
+	    		throw new IllegalArgumentException("File " + data.getPath() + " cannot be found.");
+	    	
+	    	ByteArrayOutputStream bos = new ByteArrayOutputStream(256);
+	    	try {
+	    		// Content Disposition Line
+		    	bos.write(DISPOSITION_HEADER);
+		    	bos.write(DISPOSITION_NAME);
+		    	bos.write(name.getBytes(UTF8));
+		    	bos.write(DISPOSITION_NAME_END);
+		    	bos.write(DISPOSITION_FILENAME);
+		    	bos.write(fileName.getBytes(UTF8));
+		    	bos.write(DISPOSITION_FILENAME_END);
+		    	bos.write(CRLF);
+
+	    		// Content Type Line
+		    	bos.write(TYPE_HEADER);
+		    	bos.write(mimeType.getBytes(UTF8));
+		    	bos.write(CRLF);
+
+		    	// Blank line for header end.
+		    	bos.write(CRLF);
+		    	
+		    	// ... data follows here.
+			} catch (IOException e) {
+				// should never happen.
+				throw new RuntimeException(e);
+			}
+
+	    	final byte[] headerBytes = bos.toByteArray();
+	    	
+	    	addPart(new Part(headerBytes, new PartData() 
+	    	{
+				@Override
+				public long getDataLength() 
+				{
+					return data.length();
+				}
+	
+				@Override
+				public InputStream getInputStream() throws IOException
+				{
+					return new FileInputStream(data);
+				}
+			}));
+	    	return this;
+	    }
+	    
+	    /**
+	     * Adds a byte data part to this multipart form.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the file part.
+	     * @param dataIn the input data.
+		 * @return itself, for chaining.
+	     */
+	    public MultipartFormContent addDataPart(String name, String mimeType, byte[] dataIn)
+	    {
+	    	return addDataPart(name, mimeType, null, null, dataIn);
+	    }
+	
+	    /**
+	     * Adds a byte data part to this multipart form as though it came from a file.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the file part.
+	     * @param fileName the name of the file, as though this were originating from a file (can be null, for "no file").
+	     * @param dataIn the input data.
+		 * @return itself, for chaining.
+	     */
+	    public MultipartFormContent addDataPart(String name, String mimeType, String fileName, byte[] dataIn)
+	    {
+	    	return addDataPart(name, mimeType, null, fileName, dataIn);
+	    }
+	    
+	    /**
+	     * Adds a byte data part (translated as text) to this multipart form as though it came from a file.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the file part.
+	     * @param encoding the encoding type name for the data sent, like 'base64' or somesuch (can be null to signal no encoding type).
+	     * @param fileName the name of the file, as though this were originating from a file (can be null, for "no file").
+	     * @param dataIn the input data.
+		 * @return itself, for chaining.
+	     */
+	    public MultipartFormContent addDataPart(String name, final String mimeType, final String encoding, final String fileName, final byte[] dataIn)
+	    {
+	    	ByteArrayOutputStream bos = new ByteArrayOutputStream(256);
+	    	try {
+	    		// Content Disposition Line
+		    	bos.write(DISPOSITION_HEADER);
+		    	bos.write(DISPOSITION_NAME);
+		    	bos.write(name.getBytes(UTF8));
+		    	bos.write(DISPOSITION_NAME_END);
+		    	if (fileName != null)
+		    	{
+			    	bos.write(DISPOSITION_FILENAME);
+			    	bos.write(fileName.getBytes(UTF8));
+			    	bos.write(DISPOSITION_FILENAME_END);
+		    	}
+		    	bos.write(CRLF);
+
+	    		// Content Type Line
+		    	if (mimeType != null)
+		    	{
+			    	bos.write(TYPE_HEADER);
+			    	bos.write(mimeType.getBytes(UTF8));
+			    	bos.write(CRLF);
+		    	}
+
+		    	// Content transfer encoding
+		    	if (encoding != null)
+		    	{
+		    		bos.write(ENCODING_HEADER);
+			    	bos.write(encoding.getBytes(UTF8));
+			    	bos.write(CRLF);
+		    	}
+		    	
+		    	// Blank line for header end.
+		    	bos.write(CRLF);
+		    	
+		    	// ... data follows here.
+			} catch (IOException e) {
+				// should never happen.
+				throw new RuntimeException(e);
+			}
+
+	    	final byte[] headerBytes = bos.toByteArray();
+	    	
+	    	addPart(new Part(headerBytes, new PartData() 
+	    	{
+				@Override
+				public long getDataLength() 
+				{
+					return dataIn.length;
+				}
+	
+				@Override
+				public InputStream getInputStream()
+				{
+					return new ByteArrayInputStream(dataIn);
+				}
+			}));
+	    	return this;
+	    }
+
+		@Override
+		public String getContentType()
+		{
+			return "multipart/form-data";
+		}
+
+		@Override
+		public String getCharset()
+		{
+			return "utf-8";
+		}
+
+		@Override
+		public String getEncoding()
+		{
+			return null;
+		}
+
+		@Override
+		public long getLength()
+		{
+			return length;
+		}
+
+		@Override
+		public InputStream getInputStream() throws IOException
+		{
+			return new MultiformInputStream();
+		}
+	    
+		/**
+		 * Part data.
+		 */
+		private interface PartData
+		{
+	        /**
+	         * @return the content length of this part in bytes.
+	         */
+	        long getDataLength();
+	        
+	        /**
+	         * @return an open input stream to read from this part.
+	         * @throws IOException if an I/O error occurs on read.
+	         */
+	        InputStream getInputStream() throws IOException;
+		}
+		
+		/**
+		 * A single form part.
+		 */
+		private static class Part
+		{
+			private byte[] headerbytes;
+			private PartData data;
+			
+			private Part(final byte[] headerbytes, final PartData data)
+			{
+				this.headerbytes = headerbytes;
+				this.data = data;
+			}
+			
+	        /**
+	         * @return the boundary-plus-header bytes that make up the start of this part.
+	         */
+			public byte[] getPartHeaderBytes()
+			{
+				return headerbytes;
+			}
+
+	        /**
+	         * @return the full length of this part, plus headers, in bytes.
+	         */
+	        public long getLength()
+	        {
+				return getPartHeaderBytes().length + data.getDataLength();	        	
+	        }
+
+	        /**
+	         * @return an open input stream for reading from this form.
+	         * @throws IOException if an input stream could not be opened.
+	         */
+	        public InputStream getInputStream() throws IOException
+	        {
+				return new PartInputStream();	        	
+	        }
+
+			private class PartInputStream extends InputStream
+			{
+				private boolean readHeader;
+				private InputStream currentStream;
+				
+				private PartInputStream()
+				{
+					this.readHeader = false;
+					this.currentStream = new ByteArrayInputStream(headerbytes);
+				}
+				
+				@Override
+				public int read() throws IOException
+				{
+					if (currentStream == null)
+						return -1;
+					
+					int out;
+					if ((out = currentStream.read()) < 0)
+					{
+						currentStream.close();
+						if (!readHeader)
+						{
+							currentStream = data.getInputStream();
+							readHeader = true;
+						}
+						else
+							currentStream = null;
+						return read();
+					}
+					else
+						return out;
+				}
+				
+				@Override
+				public void close() throws IOException
+				{
+					if (currentStream != null)
+					{
+						currentStream.close();
+						currentStream = null;
+					}
+					super.close();
+				}
+			}
+		}
+
+		private class MultiformInputStream extends InputStream
+		{	
+			private int[] blueprint;
+			private int currentBlueprint;
+			private Iterator<Part> streamIterator;
+			private Part currentPart;
+			private InputStream currentStream;
+			
+			private MultiformInputStream() throws IOException
+			{
+				this.streamIterator = parts.iterator();
+				this.currentBlueprint = 0;
+				this.currentPart = null;
+				this.currentStream = null;
+				this.blueprint = new int[parts.isEmpty() ? 0 : parts.size() * 2 + 1];
+				
+				if (blueprint.length > 0)
+				{
+					this.blueprint[0] = BLUEPRINT_BOUNDARY_START;
+					for (int i = 1; i < blueprint.length; i += 2)
+					{
+						this.blueprint[i] = BLUEPRINT_PART;
+						this.blueprint[i + 1] = i + 1 < blueprint.length - 1 ? BLUEPRINT_BOUNDARY_MIDDLE : BLUEPRINT_BOUNDARY_END;
+					}
+				}
+				nextStream();
+			}
+		
+			private void nextStream() throws IOException
+			{
+				if (currentBlueprint >= blueprint.length)
+				{
+					currentPart = null;
+					currentStream = null;
+				}
+				else switch (blueprint[currentBlueprint++])
+				{
+					case BLUEPRINT_BOUNDARY_START:
+						currentStream = new ByteArrayInputStream(boundaryFirst);
+						break;
+					case BLUEPRINT_PART:
+						currentPart = streamIterator.hasNext() ? streamIterator.next() : null;
+						currentStream = currentPart != null ? currentPart.getInputStream() : null;
+						break;
+					case BLUEPRINT_BOUNDARY_MIDDLE:
+						currentStream = new ByteArrayInputStream(boundaryMiddle);
+						break;
+					case BLUEPRINT_BOUNDARY_END:
+						currentStream = new ByteArrayInputStream(boundaryEnd);
+						break;
+				}
+			}
+			
+			@Override
+			public int read() throws IOException
+			{
+				if (currentStream == null)
+					return -1;
+				
+				int out;
+				if ((out = currentStream.read()) < 0)
+				{
+					nextStream();
+					return read();
+				}
+				
+				return out;
+			}
+			
+			@Override
+			public void close() throws IOException
+			{
+				if (currentStream != null)
+					currentStream.close();
+				
+				currentStream = null;
+				currentPart = null;
+				streamIterator = null;
+				super.close();
+			}
+		}
+	}
+
+	/**
+	 * HTTP headers object.
+	 */
+	public static class HTTPHeaders
+	{
+		Map<String, String> map;
+		
+		private HTTPHeaders()
+		{
+			this.map = new HashMap<>(); 
+		}
+		
+		/**
+		 * Sets a header.
+		 * @param header the header name.
+		 * @param value the header value.
+		 * @return this, for chaining.
+		 */
+		public HTTPHeaders setHeader(String header, String value)
+		{
+			map.put(header, value);
+			return this;
+		}
+
+	}
+
+	/**
+	 * HTTP Parameters object.
+	 */
+	public static class HTTPParameters
+	{
+		Map<String, List<String>> map;
+		
+		private HTTPParameters()
+		{
+			this.map = new HashMap<>(); 
+		}
+		
+		/**
+		 * Adds/creates a parameter.
+		 * @param key the parameter name.
+		 * @param value the parameter value.
+		 * @return this, for chaining.
+		 */
+		public HTTPParameters addParameter(String key, String value)
+		{
+			List<String> list;
+			if ((list = map.get(key)) == null)
+				map.put(key, (list = new LinkedList<>()));
+			list.add(value);
+			return this;
+		}
+
+		/**
+		 * Sets/resets a parameter and its values.
+		 * If the parameter is already set, it is replaced.
+		 * @param key the parameter name.
+		 * @param value the parameter value.
+		 * @return this, for chaining.
+		 */
+		public HTTPParameters setParameter(String key, String value)
+		{
+			List<String> list;
+			map.put(key, (list = new LinkedList<>()));
+			list.add(value);
+			return this;
+		}
+
+		/**
+		 * Sets/resets a parameter and its values.
+		 * If the parameter is already set, it is replaced.
+		 * @param key the parameter name.
+		 * @param values the parameter values.
+		 * @return this, for chaining.
+		 */
+		public HTTPParameters setParameter(String key, String... values)
+		{
+			List<String> list;
+			map.put(key, (list = new LinkedList<>()));
+			for (String v : values)
+				list.add(v);
+			return this;
+		}
+
+	}
+	
+	/**
 	 * Response from an HTTP call.
 	 */
 	public static class HTTPResponse
 	{
+		private Map<String, List<String>> headers;
 		private int statusCode;
 		private String statusMessage;
-		private String location;
-		private URL referrer;
 		private int length;
 		private InputStream input;
 		private String charset;
 		private String contentType;
 		private String contentTypeHeader;
 		private String encoding;
-		private boolean redirected;
 	
 		private HTTPResponse() {}
+		
+		/**
+		 * @return the headers on the response.
+		 */
+		public Map<String, List<String>> getHeaders()
+		{
+			return headers;
+		}
 		
 		/**
 		 * @return the response status code.
@@ -105,14 +957,6 @@ public final class HTTPUtils
 		public String getStatusMessage()
 		{
 			return statusMessage;
-		}
-	
-		/**
-		 * @return the url of the next location, if this is a 3xx redirect response.
-		 */
-		public String getLocation()
-		{
-			return location;
 		}
 	
 		/**
@@ -163,296 +1007,24 @@ public final class HTTPUtils
 			return encoding;
 		}
 	
-		/**
-		 * @return the response's referrer URL. can be null.
-		 */
-		public URL getReferrer()
-		{
-			return referrer;
-		}
-	
-		/**
-		 * @return true if this response was the result of a redirect, false otherwise.
-		 */
-		public boolean isRedirected()
-		{
-			return redirected;
-		}
 	}
 
 	/**
-	 * An HTTP Reader that reads byte content and returns a decoded String.
-	 * Gets the string contents of the response, decoded using the response's charset.
+	 * Starts a new {@link HTTPHeaders} object.
+	 * @return a new header object.
 	 */
-	public static HTTPReader<String> STRING_CONTENT_READER = (response) ->
+	public static HTTPHeaders headers()
 	{
-		String charset;
-		if ((charset = response.getCharset()) == null)
-			throw new UnsupportedEncodingException("No charset specified.");
-		
-		char[] c = new char[16384];
-		StringBuilder sb = new StringBuilder();
-		InputStreamReader reader = new InputStreamReader(response.getInputStream(), charset);
-
-		int buf = 0;
-		while ((buf = reader.read(c)) >= 0) 
-			sb.append(c, 0, buf);
-		
-		return sb.toString();
-	};
+		return new HTTPHeaders();
+	}
 	
 	/**
-	 * Multipart form data.
+	 * Starts a new {@link HTTPParameters} object.
+	 * @return a new parameters object.
 	 */
-	public static class MultipartFormData
+	public static HTTPParameters parameters()
 	{
-		private static final String ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-
-		private static final byte[] BOUNDARY_START;
-		private static final byte[] BOUNDARY_CRLF;
-		private static final byte[] BOUNDARY_CONTINUE;
-		private static final byte[] BOUNDARY_END;
-		
-		static
-		{
-			try {
-				BOUNDARY_START = "--".getBytes("ASCII");
-				BOUNDARY_CRLF = "\r\n".getBytes("ASCII");
-				BOUNDARY_CONTINUE = "\r\n--".getBytes("ASCII");
-				BOUNDARY_END = "--\r\n".getBytes("ASCII");
-			} catch (UnsupportedEncodingException e) {
-				throw new RuntimeException("JVM does not support ASCII encoding [INTERNAL ERROR].", e);
-			}
-		}
-		
-		/**
-		 * Part data.
-		 */
-		private interface PartData
-		{
-			/**
-			 * @return the disposition name of this part (usually a "file name") (can be null).
-			 */
-	        String getFileName();
-
-	        /**
-	         * @return the content type (MIME-type) of this part.
-	         */
-	        String getContentType();
-	        
-	        /**
-	         * @return the content length of this part in bytes.
-	         */
-	        long getContentLength();
-	        
-	        /**
-	         * @return the charset encoding of the (presumed string) data in this part (can be null). 
-	         */
-	        String getCharsetName();
-	        
-	        /**
-	         * @return an open input stream to read from this part.
-	         * @throws IOException if an I/O error occurs on read.
-	         */
-	        InputStream getInputStream() throws IOException;
-		}
-		
-		/**
-		 * A single form part.
-		 */
-		private static class Part
-		{
-			private String name;
-			private PartData data;
-			
-			private Part(String name, PartData data)
-			{
-				this.name = name;
-				this.data = data;
-			}
-		}
-		
-		/** The MIME-Type of the form data. */
-		private String mimeType;
-		/** The form part boundary. */
-		private byte[] boundary;
-		/** List of Parts. */
-		private List<Part> parts;
-		
-		private MultipartFormData() {}
-		
-		/**
-		 * Creates a new FormData object to send in a POST/PATCH/PUT request.
-		 * @return a new form object.
-		 */
-		public static MultipartFormData create()
-		{
-			MultipartFormData out = new MultipartFormData();
-			out.mimeType = "multipart/form-data";
-			out.parts = new LinkedList<>();
-			
-			Random r = new Random();
-			StringBuilder sb = new StringBuilder();
-			int dashes = r.nextInt(15) + 10;
-			int letters = r.nextInt(24) + 16;
-			while (dashes-- > 0)
-				sb.append('-');
-			while (letters-- > 0)
-				sb.append(ALPHABET.charAt(r.nextInt(ALPHABET.length())));
-			try {
-				out.boundary = sb.toString().getBytes("ASCII");
-			} catch (UnsupportedEncodingException e) {
-				throw new RuntimeException("JVM does not support ASCII encoding [INTERNAL ERROR].", e);
-			}
-			return out;
-		}
-
-		/**
-		 * Adds a single field to this multipart form.
-		 * @param name the field name.
-		 * @param value the value.
-		 * @return itself, for chaining.
-		 * @throws IOException if the data can't be encoded.
-		 */
-	    public MultipartFormData addField(String name, String value) throws IOException
-	    {
-	    	return addTextPart(name, "text/plain", "utf-8", value);
-	    }
-	    
-		/**
-		 * Adds a single text part to this multipart form.
-		 * @param name the field name.
-		 * @param mimeType the mimeType of the text part.
-		 * @param data the text data.
-		 * @return itself, for chaining.
-		 * @throws IOException if the data can't be encoded.
-		 */
-	    public MultipartFormData addTextPart(String name, final String mimeType, final String data) throws IOException
-	    {
-	    	return addTextPart(name, mimeType, "utf-8", data);
-	    }
-	    
-	    /**
-		 * Adds a single text part to this multipart form.
-		 * @param name the field name.
-		 * @param mimeType the mimeType of the text part.
-	     * @param charset the charset name for encoding the text.
-		 * @param text the text data.
-		 * @return itself, for chaining.
-		 * @throws IOException if the data can't be encoded.
-	     */
-	    public MultipartFormData addTextPart(String name, final String mimeType, final String charset, final String text) throws IOException
-	    {
-	    	return addDataPart(name, mimeType, charset, null, text.getBytes(charset));
-	    }
-	    
-	    /**
-	     * Adds a file part to this multipart form.
-	     * The name of the file is passed along.
-		 * @param name the field name.
-		 * @param mimeType the mimeType of the file part.
-	     * @param data the file data.
-		 * @return itself, for chaining.
-	     */
-	    public MultipartFormData addFilePart(String name, String mimeType, final File data)
-	    {
-	    	return addFilePart(name, mimeType, data.getName(), data);
-	    }
-	    
-	    /**
-	     * Adds a file part to this multipart form.
-		 * @param name the field name.
-		 * @param mimeType the mimeType of the file part.
-	     * @param fileName the file name to send (overridden).
-	     * @param data the file data.
-		 * @return itself, for chaining.
-	     */
-	    public MultipartFormData addFilePart(String name, String mimeType, final String fileName, final File data)
-	    {
-	    	parts.add(new Part(name, new PartData() 
-	    	{
-				@Override
-				public long getContentLength() 
-				{
-					return data.length();
-				}
-
-				@Override
-				public String getFileName() 
-				{
-					return fileName;
-				}
-
-				@Override
-				public String getContentType() 
-				{
-					return mimeType;
-				}
-				
-				@Override
-				public String getCharsetName() 
-				{
-					return null;
-				}
-
-				@Override
-				public InputStream getInputStream() throws IOException
-				{
-					return new FileInputStream(data);
-				}
-			}));
-	    	return this;
-	    }
-	    
-	    public MultipartFormData addDataPart(String name, String mimeType, byte[] dataIn)
-	    {
-	    	// TODO: Finish this.
-	    	return this;
-	    }
-	    
-	    public MultipartFormData addDataPart(String name, String mimeType, String fileName, byte[] dataIn)
-	    {
-	    	// TODO: Finish this.
-	    	return this;
-	    }
-	    
-	    public MultipartFormData addDataPart(String name, String mimeType, String charset, final String fileName, final byte[] dataIn)
-	    {
-	    	parts.add(new Part(name, new PartData() 
-	    	{
-				@Override
-				public long getContentLength() 
-				{
-					return dataIn.length;
-				}
-
-				@Override
-				public String getFileName() 
-				{
-					return fileName;
-				}
-
-				@Override
-				public String getContentType() 
-				{
-					return mimeType;
-				}
-				
-				@Override
-				public String getCharsetName() 
-				{
-					return charset;
-				}
-
-				@Override
-				public InputStream getInputStream()
-				{
-					return new ByteArrayInputStream(dataIn);
-				}
-			}));
-	    	return this;
-	    }
-	    
+		return new HTTPParameters();
 	}
 	
 	/**
@@ -468,7 +1040,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpGet(String url, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpGet(new URL(url), null, socketTimeoutMillis, reader);
+		return httpGet(url, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -476,32 +1048,17 @@ public final class HTTPUtils
 	 * The connection is closed afterward.
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
+	 * @param parameters the mapping of key to values representing parameters to append as a query string to the URL (can be null).
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
 	 */
-	public static <R> R httpGet(URL url, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpGet(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpGet(url, null, socketTimeoutMillis, reader);
-	}
-	
-	/**
-	 * Sends a GET request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpGet(String url, Map<String, String> headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return getHTTPContent(HTTP_METHOD_GET, new URL(url), headers, null, 0, null, null, null, socketTimeoutMillis, reader);
+		return httpGet(url, null, parameters, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -516,11 +1073,29 @@ public final class HTTPUtils
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpGet(URL url, Map<String, String> headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpGet(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return getHTTPContent(HTTP_METHOD_GET, url, headers, null, 0, null, null, null, socketTimeoutMillis, reader);
+		return httpGet(url, headers, null, socketTimeoutMillis, reader);
 	}
-	
+
+	/**
+	 * Sends a GET request to an HTTP URL.
+	 * The connection is closed afterward.
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static <R> R httpGet(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return getHTTPContent(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+	}
+
 	/**
 	 * Sends a HEAD request to an HTTP URL.
 	 * The connection is closed afterward.
@@ -534,7 +1109,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpHead(String url, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpHead(new URL(url), null, socketTimeoutMillis, reader);
+		return httpHead(url, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -542,32 +1117,16 @@ public final class HTTPUtils
 	 * The connection is closed afterward.
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpHead(URL url, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpHead(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpHead(url, null, socketTimeoutMillis, reader);
-	}
-	
-	/**
-	 * Sends a HEAD request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpHead(String url, Map<String, String> headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return getHTTPContent(HTTP_METHOD_HEAD, new URL(url), headers, null, 0, null, null, null, socketTimeoutMillis, reader);
+		return httpHead(url, null, parameters, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -582,11 +1141,29 @@ public final class HTTPUtils
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpHead(URL url, Map<String, String> headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpHead(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return getHTTPContent(HTTP_METHOD_HEAD, url, headers, null, 0, null, null, null, socketTimeoutMillis, reader);
+		return httpHead(url, headers, null, socketTimeoutMillis, reader);
 	}
-	
+
+	/**
+	 * Sends a HEAD request to an HTTP URL.
+	 * The connection is closed afterward.
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static <R> R httpHead(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return getHTTPContent(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+	}
+
 	/**
 	 * Sends a DELETE request to an HTTP URL.
 	 * The connection is closed afterward.
@@ -600,7 +1177,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpDelete(String url, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpDelete(new URL(url), null, socketTimeoutMillis, reader);
+		return httpDelete(url, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -608,32 +1185,16 @@ public final class HTTPUtils
 	 * The connection is closed afterward.
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpDelete(URL url, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpDelete(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpDelete(url, null, socketTimeoutMillis, reader);
-	}
-	
-	/**
-	 * Sends a DELETE request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpDelete(String url, Map<String, String> headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return getHTTPContent(HTTP_METHOD_DELETE, new URL(url), headers, null, 0, null, null, null, socketTimeoutMillis, reader);
+		return httpDelete(url, null, parameters, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -648,11 +1209,29 @@ public final class HTTPUtils
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpDelete(URL url, Map<String, String> headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpDelete(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return getHTTPContent(HTTP_METHOD_DELETE, url, headers, null, 0, null, null, null, socketTimeoutMillis, reader);
+		return httpDelete(url, headers, null, socketTimeoutMillis, reader);
 	}
-	
+
+	/**
+	 * Sends a DELETE request to an HTTP URL.
+	 * The connection is closed afterward.
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static <R> R httpDelete(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return getHTTPContent(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+	}
+
 	/**
 	 * Sends an OPTIONS request to an HTTP URL.
 	 * The connection is closed afterward.
@@ -666,7 +1245,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpOptions(String url, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpOptions(new URL(url), null, socketTimeoutMillis, reader);
+		return httpOptions(url, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -674,32 +1253,16 @@ public final class HTTPUtils
 	 * The connection is closed afterward.
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpOptions(URL url, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpOptions(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpOptions(url, null, socketTimeoutMillis, reader);
-	}
-	
-	/**
-	 * Sends an OPTIONS request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpOptions(String url, Map<String, String> headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return getHTTPContent(HTTP_METHOD_OPTIONS, new URL(url), headers, null, 0, null, null, null, socketTimeoutMillis, reader);
+		return httpOptions(url, null, parameters, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -714,11 +1277,29 @@ public final class HTTPUtils
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpOptions(URL url, Map<String, String> headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpOptions(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return getHTTPContent(HTTP_METHOD_OPTIONS, url, headers, null, 0, null, null, null, socketTimeoutMillis, reader);
+		return httpOptions(url, headers, null, socketTimeoutMillis, reader);
 	}
-	
+
+	/**
+	 * Sends an OPTIONS request to an HTTP URL.
+	 * The connection is closed afterward.
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static <R> R httpOptions(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return getHTTPContent(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+	}
+
 	/**
 	 * Sends an TRACE request to an HTTP URL.
 	 * The connection is closed afterward.
@@ -732,7 +1313,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpTrace(String url, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpTrace(new URL(url), null, socketTimeoutMillis, reader);
+		return httpTrace(url, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -740,32 +1321,16 @@ public final class HTTPUtils
 	 * The connection is closed afterward.
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpTrace(URL url, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpTrace(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpTrace(url, null, socketTimeoutMillis, reader);
-	}
-	
-	/**
-	 * Sends an TRACE request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpTrace(String url, Map<String, String> headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return getHTTPContent(HTTP_METHOD_TRACE, new URL(url), headers, null, 0, null, null, null, socketTimeoutMillis, reader);
+		return httpTrace(url, null, parameters, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -780,28 +1345,27 @@ public final class HTTPUtils
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpTrace(URL url, Map<String, String> headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpTrace(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return getHTTPContent(HTTP_METHOD_TRACE, url, headers, null, 0, null, null, null, socketTimeoutMillis, reader);
+		return httpTrace(url, headers, null, socketTimeoutMillis, reader);
 	}
-	
+
 	/**
-	 * Sends a PUT request to an HTTP URL.
+	 * Sends an TRACE request to an HTTP URL.
 	 * The connection is closed afterward.
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the string data to send.
-	 * @param dataType the content MIME-Type (charset is appended to this).
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpPut(String url, Map<String, String> headers, String data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpTrace(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpPut(url, headers, data.getBytes("UTF-8"), dataType + "; charset=utf-8", null, socketTimeoutMillis, reader);
+		return getHTTPContent(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -809,37 +1373,16 @@ public final class HTTPUtils
 	 * The connection is closed afterward.
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the string data to send.
-	 * @param dataType the content MIME-Type (charset is appended to this).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpPut(URL url, Map<String, String> headers, String data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpPut(String url, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpPut(url, headers, data.getBytes("UTF-8"), dataType + "; charset=utf-8", null, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a PUT request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPut(String url, Map<String, String> headers, byte[] data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpPut(url, headers, data, dataType, null, socketTimeoutMillis, reader);
+		return httpPut(url, null, content, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -848,173 +1391,33 @@ public final class HTTPUtils
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpPut(URL url, Map<String, String> headers, byte[] data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpPut(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpPut(url, headers, data, dataType, null, socketTimeoutMillis, reader);
+		return getHTTPContent(HTTP_METHOD_PUT, new URL(url), headers, content, null, socketTimeoutMillis, reader);
 	}
 
 	/**
-	 * Sends a PUT request to an HTTP URL.
+	 * Sends a POST request to an HTTP URL.
 	 * The connection is closed afterward.
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
-	 * @param dataEncoding the data encoding type.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpPut(String url, Map<String, String> headers, byte[] data, String dataType, String dataEncoding, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpPost(String url, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return getHTTPContent(HTTP_METHOD_PUT, new URL(url), headers, new ByteArrayInputStream(data), data.length, dataType, dataEncoding, null, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a PUT request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
-	 * @param dataEncoding the data encoding type.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPut(URL url, Map<String, String> headers, byte[] data, String dataType, String dataEncoding, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return getHTTPContent(HTTP_METHOD_PUT, url, headers, new ByteArrayInputStream(data), data.length, dataType, dataEncoding, null, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a PATCH request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the string data to send.
-	 * @param dataType the content MIME-Type (charset is appended to this).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPatch(String url, Map<String, String> headers, String data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpPatch(url, headers, data.getBytes("UTF-8"), dataType + "; charset=utf-8", null, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a PATCH request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the string data to send.
-	 * @param dataType the content MIME-Type (charset is appended to this).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPatch(URL url, Map<String, String> headers, String data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpPatch(url, headers, data.getBytes("UTF-8"), dataType + "; charset=utf-8", null, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a PATCH request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPatch(String url, Map<String, String> headers, byte[] data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpPatch(url, headers, data, dataType, null, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a PATCH request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPatch(URL url, Map<String, String> headers, byte[] data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpPatch(url, headers, data, dataType, null, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a PATCH request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
-	 * @param dataEncoding the data encoding type.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPatch(String url, Map<String, String> headers, byte[] data, String dataType, String dataEncoding, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return getHTTPContent(HTTP_METHOD_PATCH, new URL(url), headers, new ByteArrayInputStream(data), data.length, dataType, dataEncoding, null, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a PATCH request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
-	 * @param dataEncoding the data encoding type.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPatch(URL url, Map<String, String> headers, byte[] data, String dataType, String dataEncoding, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return getHTTPContent(HTTP_METHOD_PATCH, url, headers, new ByteArrayInputStream(data), data.length, dataType, dataEncoding, null, socketTimeoutMillis, reader);
+		return httpPost(url, null, content, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -1023,114 +1426,16 @@ public final class HTTPUtils
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the string data to send.
-	 * @param dataType the content MIME-Type (charset is appended to this).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 */
-	public static <R> R httpPost(String url, Map<String, String> headers, String data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpPost(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpPost(url, headers, data.getBytes("UTF-8"), dataType + "; charset=utf-8", null, socketTimeoutMillis, reader);
-	}
-	
-	/**
-	 * Sends a POST request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the string data to send.
-	 * @param dataType the content MIME-Type (charset is appended to this).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPost(URL url, Map<String, String> headers, String data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpPost(url, headers, data.getBytes("UTF-8"), dataType + "; charset=utf-8", null, socketTimeoutMillis, reader);
-	}
-	
-	/**
-	 * Sends a POST request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPost(String url, Map<String, String> headers, byte[] data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpPost(url, headers, data, dataType, null, socketTimeoutMillis, reader);
-	}
-	
-	/**
-	 * Sends a POST request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPost(URL url, Map<String, String> headers, byte[] data, String dataType, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpPost(url, headers, data, dataType, null, socketTimeoutMillis, reader);
-	}
-	
-	/**
-	 * Sends a POST request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
-	 * @param dataEncoding the data encoding type.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPost(String url, Map<String, String> headers, byte[] data, String dataType, String dataEncoding, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return getHTTPContent(HTTP_METHOD_POST, new URL(url), headers, new ByteArrayInputStream(data), data.length, dataType, dataEncoding, null, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a POST request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param data the byte data to send.
-	 * @param dataType the content MIME-Type.
-	 * @param dataEncoding the data encoding type.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 */
-	public static <R> R httpPost(URL url, Map<String, String> headers, byte[] data, String dataType, String dataEncoding, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return getHTTPContent(HTTP_METHOD_POST, url, headers, new ByteArrayInputStream(data), data.length, dataType, dataEncoding, null, socketTimeoutMillis, reader);
+		return getHTTPContent(HTTP_METHOD_POST, new URL(url), headers, content, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -1140,10 +1445,7 @@ public final class HTTPUtils
 	 * @param requestMethod the request method.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param dataContentOut if not null, read from this stream and send this data in the content.
-	 * @param dataLength the amount of data to send in bytes.
-	 * @param dataContentType if data is not null, this is the content type. If this is null, uses "application/octet-stream".
-	 * @param dataContentEncoding if data is not null, this is the encoding for the written data. Can be null.
+	 * @param content if not null, add this content to the body.
 	 * @param defaultResponseCharset if the response charset is not specified, use this one.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
@@ -1152,7 +1454,7 @@ public final class HTTPUtils
 	 * @throws SocketTimeoutException if the socket read times out.
 	 * @throws ProtocolException if the requestMethod is incorrect.
 	 */
-	public static <R> R getHTTPContent(String requestMethod, URL url, Map<String, String> headers, InputStream dataContentOut, int dataLength, String dataContentType, String dataContentEncoding, String defaultResponseCharset, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R getHTTPContent(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		if (Arrays.binarySearch(VALID_HTTP, url.getProtocol()) < 0)
 			throw new IOException("This is not an HTTP URL.");
@@ -1161,20 +1463,20 @@ public final class HTTPUtils
 		conn.setReadTimeout(socketTimeoutMillis);
 		conn.setRequestMethod(requestMethod);
 		
-		if (headers != null) for (Map.Entry<String, String> entry : headers.entrySet())
+		if (headers != null) for (Map.Entry<String, String> entry : headers.map.entrySet())
 			conn.setRequestProperty(entry.getKey(), entry.getValue());
 	
-		// set up POST data.
-		if (dataContentOut != null)
+		// set up body data.
+		if (content != null)
 		{
-			conn.setRequestProperty("Content-Length", String.valueOf(dataLength));
-			conn.setRequestProperty("Content-Type", dataContentType == null ? "application/octet-stream" : dataContentType);
-			if (dataContentEncoding != null)
-				conn.setRequestProperty("Content-Encoding", dataContentEncoding);
+			conn.setFixedLengthStreamingMode(content.getLength());
+			conn.setRequestProperty("Content-Type", content.getContentType() == null ? "application/octet-stream" : content.getContentType());
+			if (content.getEncoding() != null)
+				conn.setRequestProperty("Content-Encoding", content.getEncoding());
 			conn.setDoOutput(true);
 			try (DataOutputStream dos = new DataOutputStream(conn.getOutputStream()))
 			{
-				relay(dataContentOut, dos, 8192);
+				relay(content.getInputStream(), dos, 8192);
 			}
 		}
 	
@@ -1202,7 +1504,7 @@ public final class HTTPUtils
 		if (response.charset == null)
 			response.charset = defaultResponseCharset;
 		
-		response.location = conn.getHeaderField("Location"); // if any.
+		response.headers = conn.getHeaderFields();
 		response.input = new BufferedInputStream(conn.getInputStream());
 		
 		R out = reader.onHTTPResponse(response);
@@ -1210,6 +1512,59 @@ public final class HTTPUtils
 		return out;
 	}
 	
+	private static final char[] HEX_NYBBLE = "0123456789ABCDEF".toCharArray();
+
+	private static void writePercentChar(StringBuilder target, byte b)
+	{
+		target.append('%');
+		target.append(HEX_NYBBLE[(b & 0x0f0) >> 4]);
+		target.append(HEX_NYBBLE[b & 0x00f]);
+	}
+	
+	private static String toURLEncoding(String s)
+	{
+		StringBuilder sb = new StringBuilder();
+		byte[] bytes = s.getBytes(UTF8);
+		for (int i = 0; i < s.length(); i++)
+		{
+			byte b = bytes[i];
+			if (Arrays.binarySearch(URL_UNRESERVED, b) >= 0)
+				sb.append((char)b);
+			else if (Arrays.binarySearch(URL_RESERVED, b) >= 0)
+				writePercentChar(sb, b);
+			else
+				writePercentChar(sb, b);
+		}
+		return sb.toString();
+	}
+	
+	private static String mapToParameterString(Map<String, List<String>> map)
+	{
+		StringBuilder sb = new StringBuilder();
+		for (Map.Entry<String, List<String>> entry : map.entrySet())
+		{
+			String key = entry.getKey();
+			for (String value : entry.getValue())
+			{
+				if (sb.length() > 0)
+					sb.append('&');
+				sb.append(toURLEncoding(key));
+				sb.append('=');
+				sb.append(toURLEncoding(value));
+			}
+		}
+		return sb.toString();
+	}
+	
+	private static String urlParams(String url, HTTPParameters parameters)
+	{
+		String param = parameters != null ? mapToParameterString(parameters.map) : null;
+		
+		if (param != null && !param.isEmpty())
+			url = url + (url.indexOf('?') >= 0 ? '&' : '?') + param;
+		return url;
+	}
+
 	/**
 	 * Reads from an input stream, reading in a consistent set of data
 	 * and writing it to the output stream. The read/write is buffered

@@ -14,7 +14,7 @@ public final class HTTPTest
 		
 	public static void main(String[] args) throws IOException
 	{
-		MultipartFormContent content = HTTPUtils.HTTPContent.multipart()
+		MultipartFormContent content = HTTPUtils.multipartContent()
 			.addField("stuff", "junk")
 			.addField("json", "{\"x\":5,\"y\":\"\u2194\"}")
 			.addFilePart("license file", "text/plain", new File("LICENSE.txt"))

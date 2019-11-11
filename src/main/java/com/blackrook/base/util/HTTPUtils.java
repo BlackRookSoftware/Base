@@ -73,157 +73,6 @@ public final class HTTPUtils
 		}
 	}
 	
-	/**
-	 * Interface for reading an HTTPResponse from a URL call.
-	 * @param <R> the return type.
-	 */
-	@FunctionalInterface
-	public interface HTTPReader<R>
-	{
-		/**
-		 * Called to read the HTTP response from an HTTP call.
-		 * @param response the response object.
-		 * @return the returned decoded object.
-		 * @throws IOException if read error occurs.
-		 */
-		R onHTTPResponse(HTTPResponse response) throws IOException;
-	}
-
-	/**
-	 * Content body abstraction.
-	 */
-	public interface HTTPContent
-	{
-		/**
-		 * @return the content MIME-type of this content.
-		 */
-		String getContentType();
-
-		/**
-		 * @return the encoded charset of this content (can be null if not text).
-		 */
-		String getCharset();
-
-		/**
-		 * @return the encoding type of this content (like GZIP or somesuch).
-		 */
-		String getEncoding();
-
-		/**
-		 * @return the length of the content in bytes.
-		 */
-		long getLength();
-
-		/**
-		 * @return an input stream for the data.
-		 * @throws IOException if the stream can't be opened.
-		 * @throws SecurityException if the OS forbids opening it.
-		 */
-		InputStream getInputStream() throws IOException;
-
-		/**
-		 * Creates a text blob content body for an HTTP request.
-		 * @param contentType the data's content type.
-		 * @param text the text data.
-		 * @return a content object representing the content.
-		 */
-		static HTTPContent text(String contentType, String text)
-		{
-			try {
-				return new TextContent(contentType, "utf-8", null, text.getBytes("utf-8"));
-			} catch (UnsupportedEncodingException e) {
-				throw new RuntimeException("JVM does not support the UTF-8 charset [INTERNAL ERROR].");
-			}
-		}
-		
-		/**
-		 * Creates a byte blob content body for an HTTP request.
-		 * @param contentType the data's content type.
-		 * @param bytes the byte data.
-		 * @return a content object representing the content.
-		 */
-		static HTTPContent bytes(String contentType, byte[] bytes)
-		{
-			return new BlobContent(contentType, null, bytes);
-		}
-		
-		/**
-		 * Creates a byte blob content body for an HTTP request.
-		 * @param contentType the data's content type.
-		 * @param contentEncoding the data's encoding type (like gzip or what have you, can be null for none).
-		 * @param bytes the byte data.
-		 * @return a content object representing the content.
-		 */
-		static HTTPContent bytes(String contentType, String contentEncoding, byte[] bytes)
-		{
-			return new BlobContent(contentType, contentEncoding, bytes);
-		}
-
-		/**
-		 * Creates a file-based content body for an HTTP request.
-		 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
-		 * @param contentType the file's content type.
-		 * @param file the file to read from.
-		 * @return a content object representing the content.
-		 */
-		static HTTPContent file(String contentType, File file)
-		{
-			return new FileContent(contentType, file);
-		}
-		
-		/**
-		 * Creates a WWW form, URL encoded content body for an HTTP request.
-		 * <p>Note: This is NOT mulitpart form-data content! 
-		 * See {@link MultipartFormContent} for mixed file attachments and fields.
-		 * @param keyValueMap the map of key to value.
-		 * @return a content object representing the content.
-		 */
-		static HTTPContent form(HTTPParameters keyValueMap)
-		{
-			return new FormContent(keyValueMap.map);
-		}
-		
-		/**
-		 * Creates a WWW form, URL encoded content body for an HTTP request.
-		 * <p>Note: This is NOT mulitpart form-data content! 
-		 * See {@link MultipartFormContent} for mixed file attachments and fields.
-		 * @param keyValueMap the map of key to value.
-		 * @return a content object representing the content.
-		 */
-		static MultipartFormContent multipart()
-		{
-			return new MultipartFormContent();
-		}
-		
-	}
-
-	/**
-	 * Contained readers for responses.
-	 */
-	public interface Readers
-	{
-		/**
-		 * An HTTP Reader that reads byte content and returns a decoded String.
-		 * Gets the string contents of the response, decoded using the response's charset.
-		 */
-		HTTPReader<String> STRING_CONTENT_READER = (response) ->
-		{
-			String charset;
-			if ((charset = response.getCharset()) == null)
-				throw new UnsupportedEncodingException("No charset specified.");
-			
-			char[] c = new char[16384];
-			StringBuilder sb = new StringBuilder();
-			InputStreamReader reader = new InputStreamReader(response.getInputStream(), charset);
-
-			int buf = 0;
-			while ((buf = reader.read(c)) >= 0) 
-				sb.append(c, 0, buf);
-			
-			return sb.toString();
-		};
-	}
-	
 	private static class BlobContent implements HTTPContent
 	{
 		private String contentType;
@@ -336,6 +185,83 @@ public final class HTTPUtils
 		{
 			super("x-www-form-urlencoded", Charset.defaultCharset().displayName(), null, mapToParameterString(map).getBytes());
 		}
+	}
+
+	/**
+	 * Interface for reading an HTTPResponse from a URL call.
+	 * @param <R> the return type.
+	 */
+	@FunctionalInterface
+	public interface HTTPReader<R>
+	{
+		/**
+		 * Called to read the HTTP response from an HTTP call.
+		 * @param response the response object.
+		 * @return the returned decoded object.
+		 * @throws IOException if read error occurs.
+		 */
+		R onHTTPResponse(HTTPResponse response) throws IOException;
+	}
+
+	/**
+	 * Content body abstraction.
+	 */
+	public interface HTTPContent
+	{
+		/**
+		 * @return the content MIME-type of this content.
+		 */
+		String getContentType();
+	
+		/**
+		 * @return the encoded charset of this content (can be null if not text).
+		 */
+		String getCharset();
+	
+		/**
+		 * @return the encoding type of this content (like GZIP or somesuch).
+		 */
+		String getEncoding();
+	
+		/**
+		 * @return the length of the content in bytes.
+		 */
+		long getLength();
+	
+		/**
+		 * @return an input stream for the data.
+		 * @throws IOException if the stream can't be opened.
+		 * @throws SecurityException if the OS forbids opening it.
+		 */
+		InputStream getInputStream() throws IOException;
+		
+	}
+
+	/**
+	 * Contained readers for responses.
+	 */
+	public interface Readers
+	{
+		/**
+		 * An HTTP Reader that reads byte content and returns a decoded String.
+		 * Gets the string contents of the response, decoded using the response's charset.
+		 */
+		HTTPReader<String> STRING_CONTENT_READER = (response) ->
+		{
+			String charset;
+			if ((charset = response.getCharset()) == null)
+				throw new UnsupportedEncodingException("No charset specified.");
+			
+			char[] c = new char[16384];
+			StringBuilder sb = new StringBuilder();
+			InputStreamReader reader = new InputStreamReader(response.getInputStream(), charset);
+	
+			int buf = 0;
+			while ((buf = reader.read(c)) >= 0) 
+				sb.append(c, 0, buf);
+			
+			return sb.toString();
+		};
 	}
 
 	/**
@@ -1027,6 +953,79 @@ public final class HTTPUtils
 		return new HTTPParameters();
 	}
 	
+	/**
+	 * Creates a text blob content body for an HTTP request.
+	 * @param contentType the data's content type.
+	 * @param text the text data.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent textContent(String contentType, String text)
+	{
+		try {
+			return new TextContent(contentType, "utf-8", null, text.getBytes("utf-8"));
+		} catch (UnsupportedEncodingException e) {
+			throw new RuntimeException("JVM does not support the UTF-8 charset [INTERNAL ERROR].");
+		}
+	}
+
+	/**
+	 * Creates a byte blob content body for an HTTP request.
+	 * @param contentType the data's content type.
+	 * @param bytes the byte data.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent byteContent(String contentType, byte[] bytes)
+	{
+		return new BlobContent(contentType, null, bytes);
+	}
+
+	/**
+	 * Creates a byte blob content body for an HTTP request.
+	 * @param contentType the data's content type.
+	 * @param contentEncoding the data's encoding type (like gzip or what have you, can be null for none).
+	 * @param bytes the byte data.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent byteContent(String contentType, String contentEncoding, byte[] bytes)
+	{
+		return new BlobContent(contentType, contentEncoding, bytes);
+	}
+
+	/**
+	 * Creates a file-based content body for an HTTP request.
+	 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
+	 * @param contentType the file's content type.
+	 * @param file the file to read from.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent fileContent(String contentType, File file)
+	{
+		return new FileContent(contentType, file);
+	}
+
+	/**
+	 * Creates a WWW form, URL encoded content body for an HTTP request.
+	 * <p>Note: This is NOT mulitpart form-data content! 
+	 * See {@link MultipartFormContent} for mixed file attachments and fields.
+	 * @param keyValueMap the map of key to value.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent formContent(HTTPParameters keyValueMap)
+	{
+		return new FormContent(keyValueMap.map);
+	}
+
+	/**
+	 * Creates a WWW form, URL encoded content body for an HTTP request.
+	 * <p>Note: This is NOT mulitpart form-data content! 
+	 * See {@link MultipartFormContent} for mixed file attachments and fields.
+	 * @return a content object representing the content.
+	 */
+	public static MultipartFormContent multipartContent()
+	{
+		return new MultipartFormContent();
+	}
+
 	/**
 	 * Sends a GET request to an HTTP URL.
 	 * The connection is closed afterward.

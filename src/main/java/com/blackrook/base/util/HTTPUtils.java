@@ -139,11 +139,18 @@ public final class HTTPUtils
 	private static class FileContent implements HTTPContent
 	{
 		private String contentType;
+		private String encodingType;
 		private File file;
 		
-		private FileContent(String contentType, File file)
+		private FileContent(String contentType, String encodingType, File file)
 		{
-			this.contentType = contentType;
+	    	if (file == null)
+	    		throw new IllegalArgumentException("file cannot be null.");
+	    	if (!file.exists())
+	    		throw new IllegalArgumentException("File " + file.getPath() + " cannot be found.");
+
+	    	this.contentType = contentType;
+	    	this.encodingType = encodingType;
 			this.file = file;
 		}
 		
@@ -162,7 +169,7 @@ public final class HTTPUtils
 		@Override
 		public String getEncoding()
 		{
-			return null;
+			return encodingType;
 		}
 	
 		@Override
@@ -201,6 +208,27 @@ public final class HTTPUtils
 		 * @throws IOException if read error occurs.
 		 */
 		R onHTTPResponse(HTTPResponse response) throws IOException;
+		
+		/**
+		 * An HTTP Reader that reads byte content and returns a decoded String.
+		 * Gets the string contents of the response, decoded using the response's charset.
+		 */
+		static HTTPReader<String> STRING_CONTENT_READER = (response) ->
+		{
+			String charset;
+			if ((charset = response.getCharset()) == null)
+				throw new UnsupportedEncodingException("No charset specified.");
+			
+			char[] c = new char[16384];
+			StringBuilder sb = new StringBuilder();
+			InputStreamReader reader = new InputStreamReader(response.getInputStream(), charset);
+	
+			int buf = 0;
+			while ((buf = reader.read(c)) >= 0) 
+				sb.append(c, 0, buf);
+			
+			return sb.toString();
+		};
 	}
 
 	/**
@@ -235,33 +263,6 @@ public final class HTTPUtils
 		 */
 		InputStream getInputStream() throws IOException;
 		
-	}
-
-	/**
-	 * Contained readers for responses.
-	 */
-	public interface Readers
-	{
-		/**
-		 * An HTTP Reader that reads byte content and returns a decoded String.
-		 * Gets the string contents of the response, decoded using the response's charset.
-		 */
-		HTTPReader<String> STRING_CONTENT_READER = (response) ->
-		{
-			String charset;
-			if ((charset = response.getCharset()) == null)
-				throw new UnsupportedEncodingException("No charset specified.");
-			
-			char[] c = new char[16384];
-			StringBuilder sb = new StringBuilder();
-			InputStreamReader reader = new InputStreamReader(response.getInputStream(), charset);
-	
-			int buf = 0;
-			while ((buf = reader.read(c)) >= 0) 
-				sb.append(c, 0, buf);
-			
-			return sb.toString();
-		};
 	}
 
 	/**
@@ -476,7 +477,7 @@ public final class HTTPUtils
 	     * Adds a byte data part (translated as text) to this multipart form as though it came from a file.
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the file part.
-	     * @param encoding the encoding type name for the data sent, like 'base64' or somesuch (can be null to signal no encoding type).
+	     * @param encoding the encoding type name for the data sent, like 'base64' or 'gzip' or somesuch (can be null to signal no encoding type).
 	     * @param fileName the name of the file, as though this were originating from a file (can be null, for "no file").
 	     * @param dataIn the input data.
 		 * @return itself, for chaining.
@@ -959,7 +960,7 @@ public final class HTTPUtils
 	 * @param text the text data.
 	 * @return a content object representing the content.
 	 */
-	public static HTTPContent textContent(String contentType, String text)
+	public static HTTPContent createTextContent(String contentType, String text)
 	{
 		try {
 			return new TextContent(contentType, "utf-8", null, text.getBytes("utf-8"));
@@ -974,7 +975,7 @@ public final class HTTPUtils
 	 * @param bytes the byte data.
 	 * @return a content object representing the content.
 	 */
-	public static HTTPContent byteContent(String contentType, byte[] bytes)
+	public static HTTPContent createByteContent(String contentType, byte[] bytes)
 	{
 		return new BlobContent(contentType, null, bytes);
 	}
@@ -986,7 +987,7 @@ public final class HTTPUtils
 	 * @param bytes the byte data.
 	 * @return a content object representing the content.
 	 */
-	public static HTTPContent byteContent(String contentType, String contentEncoding, byte[] bytes)
+	public static HTTPContent createByteContent(String contentType, String contentEncoding, byte[] bytes)
 	{
 		return new BlobContent(contentType, contentEncoding, bytes);
 	}
@@ -998,9 +999,22 @@ public final class HTTPUtils
 	 * @param file the file to read from.
 	 * @return a content object representing the content.
 	 */
-	public static HTTPContent fileContent(String contentType, File file)
+	public static HTTPContent createFileContent(String contentType, File file)
 	{
-		return new FileContent(contentType, file);
+		return new FileContent(contentType, null, file);
+	}
+
+	/**
+	 * Creates a file-based content body for an HTTP request.
+	 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
+	 * @param contentType the file's content type.
+	 * @param encodingType the data encoding type for the file's payload (e.g. "gzip" or "base64").
+	 * @param file the file to read from.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent createFileContent(String contentType, String encodingType, File file)
+	{
+		return new FileContent(contentType, encodingType, file);
 	}
 
 	/**
@@ -1010,7 +1024,7 @@ public final class HTTPUtils
 	 * @param keyValueMap the map of key to value.
 	 * @return a content object representing the content.
 	 */
-	public static HTTPContent formContent(HTTPParameters keyValueMap)
+	public static HTTPContent createFormContent(HTTPParameters keyValueMap)
 	{
 		return new FormContent(keyValueMap.map);
 	}
@@ -1021,7 +1035,7 @@ public final class HTTPUtils
 	 * See {@link MultipartFormContent} for mixed file attachments and fields.
 	 * @return a content object representing the content.
 	 */
-	public static MultipartFormContent multipartContent()
+	public static MultipartFormContent createMultipartContent()
 	{
 		return new MultipartFormContent();
 	}

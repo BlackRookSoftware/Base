@@ -838,9 +838,8 @@ public final class ReflectUtils
 	// Scans a JAR file
 	private static void scanJARFile(String prefix, List<String> outList, File file)
 	{
-		ZipFile jarFile = null;
-		try {
-			jarFile = new ZipFile(file);
+		try (ZipFile jarFile = new ZipFile(file))
+		{
 			Enumeration<? extends ZipEntry> zipEntries = jarFile.entries();
 			while (zipEntries.hasMoreElements())
 			{
@@ -855,21 +854,22 @@ public final class ReflectUtils
 				}
 			}
 			
-		} catch (ZipException e) {
+		} 
+		catch (ZipException e) 
+		{
 			throw new RuntimeException(e);
-		} catch (IOException e) {
+		} 
+		catch (IOException e) 
+		{
 			throw new RuntimeException(e);
-		} finally {
-			IOUtils.close(jarFile);
 		}
 	}
 	
 	// Scans a JMOD file
 	private static void scanJMODFile(String prefix, List<String> outList, File file)
 	{
-		ZipFile jmodFile = null;
-		try {
-			jmodFile = new ZipFile(file);
+		try (ZipFile jmodFile = new ZipFile(file)) 
+		{
 			Enumeration<? extends ZipEntry> zipEntries = jmodFile.entries();
 			while (zipEntries.hasMoreElements())
 			{
@@ -884,12 +884,14 @@ public final class ReflectUtils
 				}
 			}
 			
-		} catch (ZipException e) {
+		} 
+		catch (ZipException e) 
+		{
 			throw new RuntimeException(e);
-		} catch (IOException e) {
+		} 
+		catch (IOException e) 
+		{
 			throw new RuntimeException(e);
-		} finally {
-			IOUtils.close(jmodFile);
 		}
 	}	
 }

@@ -7,19 +7,14 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 import com.blackrook.base.util.HTTPUtils;
-import com.blackrook.base.util.HTTPUtils.MultipartFormContent;
+import com.blackrook.base.util.HTTPUtils.HTTPContent;
 
 public final class HTTPTest
 {
 		
 	public static void main(String[] args) throws IOException
 	{
-		MultipartFormContent content = HTTPUtils.multipartContent()
-			.addField("stuff", "junk")
-			.addField("json", "{\"x\":5,\"y\":\"\u2194\"}")
-			.addFilePart("license file", "text/plain", new File("LICENSE.txt"))
-			.addFilePart("junk", "text/plain", new File("README.md"))
-		;
+		HTTPContent content = HTTPUtils.createFileContent("text/plain", new File("LICENSE.txt"));
 				
 		try (FileOutputStream fos = new FileOutputStream(new File("junk.txt")); InputStream in = content.getInputStream())
 		{

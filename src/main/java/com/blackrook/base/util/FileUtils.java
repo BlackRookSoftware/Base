@@ -85,9 +85,8 @@ public final class FileUtils
 		boolean bitval = passes == 1 ? false : (passes % 2) == 0;
 	
 		// Overwrite.
-		RandomAccessFile raf = new RandomAccessFile(file, "rws");
-		FileLock lock = raf.getChannel().lock();
-		try {
+		try (RandomAccessFile raf = new RandomAccessFile(file, "rws"); FileLock lock = raf.getChannel().lock()) 
+		{
 			byte[] buffer = new byte[65536];
 			while (passes-- > 0)
 			{
@@ -101,9 +100,6 @@ public final class FileUtils
 					n = raf.getFilePointer();
 				}
 			}
-		} finally {
-			lock.release();
-			raf.close();
 		}
 		
 		// Overwrite filename.

@@ -206,7 +206,7 @@ public final class MathUtils
 	 */
 	public static int getPercent(int x, float percentage)
 	{
-	    return (int)(x*(percentage/100f));
+		return (int)(x*(percentage/100f));
 	}
 
 	/**
@@ -631,26 +631,26 @@ public final class MathUtils
 		double viewWidth = Math.max(left, right) - Math.min(left, right);
 		double viewHeight = Math.max(bottom, top) - Math.min(bottom, top);
 		double viewAspect = viewWidth / viewHeight;
-        
-        if (targetAspect >= viewAspect)
-        {
-        	double axis = targetAspect * viewHeight;
-        	double widthDiff = (axis - viewWidth) / 2f;
-            right = left + viewWidth + widthDiff;
-            left = left - widthDiff;
-        }
-        else
-        {
-        	double axis = (1.0f / targetAspect) * viewWidth;
-        	double heightDiff = (axis - viewHeight) / 2f;
-            top = bottom + viewHeight + heightDiff;
-        	bottom = bottom - heightDiff;
-        }
 		
-        outBounds[0] = left;
-        outBounds[1] = right;
-        outBounds[2] = bottom;
-        outBounds[3] = top;
+		if (targetAspect >= viewAspect)
+		{
+			double axis = targetAspect * viewHeight;
+			double widthDiff = (axis - viewWidth) / 2f;
+			right = left + viewWidth + widthDiff;
+			left = left - widthDiff;
+		}
+		else
+		{
+			double axis = (1.0f / targetAspect) * viewWidth;
+			double heightDiff = (axis - viewHeight) / 2f;
+			top = bottom + viewHeight + heightDiff;
+			bottom = bottom - heightDiff;
+		}
+		
+		outBounds[0] = left;
+		outBounds[1] = right;
+		outBounds[2] = bottom;
+		outBounds[3] = top;
 	}
 	
 	/**

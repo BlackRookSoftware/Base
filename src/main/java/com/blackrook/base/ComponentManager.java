@@ -110,8 +110,8 @@ public final class ComponentManager
 	@Retention(RetentionPolicy.RUNTIME)
 	public @interface Ordering
 	{
-	    /** @return the ordering value (default 0). */
-	    int value() default 0;
+		/** @return the ordering value (default 0). */
+		int value() default 0;
 	}
 
 	/**

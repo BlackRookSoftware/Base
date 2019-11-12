@@ -53,7 +53,7 @@ public final class StringUtils
 					break;
 				case '"':
 					if (i != 0 && i != s.length() - 1)
-						out.append("\\\"");    					
+						out.append("\\\"");						
 					else
 						out.append("\"");
 					break;

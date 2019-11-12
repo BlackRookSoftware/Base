@@ -86,7 +86,7 @@ public final class SerializerUtils
 	 */
 	public static float bytesToFloat(byte[] b, boolean endianMode)
 	{
-	    return Float.intBitsToFloat(bytesToInt(b, endianMode));
+		return Float.intBitsToFloat(bytesToInt(b, endianMode));
 	}
 
 	/**
@@ -97,7 +97,7 @@ public final class SerializerUtils
 	 */
 	public static double bytesToDouble(byte[] b, boolean endianMode)
 	{
-	    return Double.longBitsToDouble(bytesToLong(b, endianMode));
+		return Double.longBitsToDouble(bytesToLong(b, endianMode));
 	}
 
 	/**

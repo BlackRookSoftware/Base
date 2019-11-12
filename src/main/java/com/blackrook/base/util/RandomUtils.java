@@ -24,7 +24,7 @@ public final class RandomUtils
 	 */
 	public static boolean randBoolean(Random rand)
 	{
-	    return rand.nextBoolean();
+		return rand.nextBoolean();
 	}
 
 	/**
@@ -43,7 +43,7 @@ public final class RandomUtils
 	 */
 	public static int randInt(Random rand)
 	{
-	    return rand.nextInt();
+		return rand.nextInt();
 	}
 
 	/**
@@ -52,7 +52,7 @@ public final class RandomUtils
 	 */
 	public static long randLong(Random rand)
 	{
-	    return rand.nextLong();
+		return rand.nextLong();
 	}
 
 	/**
@@ -61,7 +61,7 @@ public final class RandomUtils
 	 */
 	public static float randFloat(Random rand)
 	{
-	    return rand.nextFloat();
+		return rand.nextFloat();
 	}
 
 	/**
@@ -70,7 +70,7 @@ public final class RandomUtils
 	 */
 	public static double randDouble(Random rand)
 	{
-	    return rand.nextDouble();
+		return rand.nextDouble();
 	}
 
 	/**
@@ -79,7 +79,7 @@ public final class RandomUtils
 	 */
 	public static double randGauss(Random rand)
 	{
-	    return rand.nextGaussian();
+		return rand.nextGaussian();
 	}
 
 	/**
@@ -100,7 +100,7 @@ public final class RandomUtils
 	 */
 	public static int rand(Random rand, int x)
 	{
-	    return rand.nextInt(x);
+		return rand.nextInt(x);
 	}
 
 	/**
@@ -112,7 +112,7 @@ public final class RandomUtils
 	 */
 	public static int rand(Random rand, int base, int range)
 	{
-	    return rand(rand,range+1)+base;
+		return rand(rand,range+1)+base;
 	}
 
 	/**
@@ -134,7 +134,7 @@ public final class RandomUtils
 	 */
 	public static float randGaussFloat(Random rand)
 	{
-	    return (float)randGauss(rand);
+		return (float)randGauss(rand);
 	}
 
 	/**
@@ -159,7 +159,7 @@ public final class RandomUtils
 	 */
 	public static int randInt(Random rand, int lo, int hi)
 	{
-	    return rand(rand,hi-lo+1)+lo;
+		return rand(rand,hi-lo+1)+lo;
 	}
 
 	/**
@@ -169,7 +169,7 @@ public final class RandomUtils
 	 */
 	public static float randFloatN(Random rand)
 	{
-	    return randFloat(rand) * (randBoolean(rand)?-1.0f:1.0f);
+		return randFloat(rand) * (randBoolean(rand)?-1.0f:1.0f);
 	}
 
 	/**
@@ -191,7 +191,7 @@ public final class RandomUtils
 	 */
 	public static double randDoubleN(Random rand)
 	{
-	    return randDouble(rand) * (randBoolean(rand)? -1.0 : 1.0);
+		return randDouble(rand) * (randBoolean(rand)? -1.0 : 1.0);
 	}
 
 	/**
@@ -203,7 +203,7 @@ public final class RandomUtils
 	 */
 	public static short randShort(Random rand, int lo, int hi)
 	{
-	    return (short)(rand(rand,hi-lo+1)+lo);
+		return (short)(rand(rand,hi-lo+1)+lo);
 	}
 
 	/**
@@ -215,7 +215,7 @@ public final class RandomUtils
 	 */
 	public static short randShort(Random rand, short lo, short hi)
 	{
-	    return (short)(rand(rand,hi-lo+1)+lo);
+		return (short)(rand(rand,hi-lo+1)+lo);
 	}
 
 	/**

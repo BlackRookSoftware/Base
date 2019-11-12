@@ -144,13 +144,13 @@ public final class HTTPUtils
 		
 		private FileContent(String contentType, String encodingType, File file)
 		{
-	    	if (file == null)
-	    		throw new IllegalArgumentException("file cannot be null.");
-	    	if (!file.exists())
-	    		throw new IllegalArgumentException("File " + file.getPath() + " cannot be found.");
+			if (file == null)
+				throw new IllegalArgumentException("file cannot be null.");
+			if (!file.exists())
+				throw new IllegalArgumentException("File " + file.getPath() + " cannot be found.");
 
-	    	this.contentType = contentType;
-	    	this.encodingType = encodingType;
+			this.contentType = contentType;
+			this.encodingType = encodingType;
 			this.file = file;
 		}
 		
@@ -341,11 +341,11 @@ public final class HTTPUtils
 		// Adds a part and calculates change in length.
 		private void addPart(final Part p)
 		{
-	    	boolean hadOtherParts = !parts.isEmpty();
-	    	parts.add(p);
-	    	length += p.getLength();
-	    	if (hadOtherParts)
-	    		length += boundaryMiddle.length;
+			boolean hadOtherParts = !parts.isEmpty();
+			parts.add(p);
+			length += p.getLength();
+			if (hadOtherParts)
+				length += boundaryMiddle.length;
 		}
 		
 		/**
@@ -355,84 +355,84 @@ public final class HTTPUtils
 		 * @return itself, for chaining.
 		 * @throws IOException if the data can't be encoded.
 		 */
-	    public MultipartFormContent addField(String name, String value) throws IOException
-	    {
-	    	return addTextPart(name, null, value);
-	    }
-	    
-	    /**
+		public MultipartFormContent addField(String name, String value) throws IOException
+		{
+			return addTextPart(name, null, value);
+		}
+		
+		/**
 		 * Adds a single text part to this multipart form.
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the text part.
 		 * @param text the text data.
 		 * @return itself, for chaining.
 		 * @throws IOException if the data can't be encoded.
-	     */
-	    public MultipartFormContent addTextPart(String name, final String mimeType, final String text) throws IOException
-	    {
-	    	return addDataPart(name, mimeType, null, null, text.getBytes(UTF8));
-	    }
-	    
-	    /**
-	     * Adds a file part to this multipart form.
-	     * The name of the file is passed along.
+		 */
+		public MultipartFormContent addTextPart(String name, final String mimeType, final String text) throws IOException
+		{
+			return addDataPart(name, mimeType, null, null, text.getBytes(UTF8));
+		}
+		
+		/**
+		 * Adds a file part to this multipart form.
+		 * The name of the file is passed along.
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the file part.
-	     * @param data the file data.
+		 * @param data the file data.
 		 * @return itself, for chaining.
 		 * @throws IllegalArgumentException if data is null or the file cannot be found.
-	     */
-	    public MultipartFormContent addFilePart(String name, String mimeType, final File data)
-	    {
-	    	return addFilePart(name, mimeType, data.getName(), data);
-	    }
-	    
-	    /**
-	     * Adds a file part to this multipart form.
+		 */
+		public MultipartFormContent addFilePart(String name, String mimeType, final File data)
+		{
+			return addFilePart(name, mimeType, data.getName(), data);
+		}
+		
+		/**
+		 * Adds a file part to this multipart form.
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the file part.
-	     * @param fileName the file name to send (overridden).
-	     * @param data the file data.
+		 * @param fileName the file name to send (overridden).
+		 * @param data the file data.
 		 * @return itself, for chaining.
 		 * @throws IllegalArgumentException if data is null or the file cannot be found.
-	     */
-	    public MultipartFormContent addFilePart(String name, final String mimeType, final String fileName, final File data)
-	    {
-	    	if (data == null)
-	    		throw new IllegalArgumentException("data cannot be null.");
-	    	if (!data.exists())
-	    		throw new IllegalArgumentException("File " + data.getPath() + " cannot be found.");
-	    	
-	    	ByteArrayOutputStream bos = new ByteArrayOutputStream(256);
-	    	try {
-	    		// Content Disposition Line
-		    	bos.write(DISPOSITION_HEADER);
-		    	bos.write(DISPOSITION_NAME);
-		    	bos.write(name.getBytes(UTF8));
-		    	bos.write(DISPOSITION_NAME_END);
-		    	bos.write(DISPOSITION_FILENAME);
-		    	bos.write(fileName.getBytes(UTF8));
-		    	bos.write(DISPOSITION_FILENAME_END);
-		    	bos.write(CRLF);
+		 */
+		public MultipartFormContent addFilePart(String name, final String mimeType, final String fileName, final File data)
+		{
+			if (data == null)
+				throw new IllegalArgumentException("data cannot be null.");
+			if (!data.exists())
+				throw new IllegalArgumentException("File " + data.getPath() + " cannot be found.");
+			
+			ByteArrayOutputStream bos = new ByteArrayOutputStream(256);
+			try {
+				// Content Disposition Line
+				bos.write(DISPOSITION_HEADER);
+				bos.write(DISPOSITION_NAME);
+				bos.write(name.getBytes(UTF8));
+				bos.write(DISPOSITION_NAME_END);
+				bos.write(DISPOSITION_FILENAME);
+				bos.write(fileName.getBytes(UTF8));
+				bos.write(DISPOSITION_FILENAME_END);
+				bos.write(CRLF);
 
-	    		// Content Type Line
-		    	bos.write(TYPE_HEADER);
-		    	bos.write(mimeType.getBytes(UTF8));
-		    	bos.write(CRLF);
+				// Content Type Line
+				bos.write(TYPE_HEADER);
+				bos.write(mimeType.getBytes(UTF8));
+				bos.write(CRLF);
 
-		    	// Blank line for header end.
-		    	bos.write(CRLF);
-		    	
-		    	// ... data follows here.
+				// Blank line for header end.
+				bos.write(CRLF);
+				
+				// ... data follows here.
 			} catch (IOException e) {
 				// should never happen.
 				throw new RuntimeException(e);
 			}
 
-	    	final byte[] headerBytes = bos.toByteArray();
-	    	
-	    	addPart(new Part(headerBytes, new PartData() 
-	    	{
+			final byte[] headerBytes = bos.toByteArray();
+			
+			addPart(new Part(headerBytes, new PartData() 
+			{
 				@Override
 				public long getDataLength() 
 				{
@@ -445,89 +445,89 @@ public final class HTTPUtils
 					return new FileInputStream(data);
 				}
 			}));
-	    	return this;
-	    }
-	    
-	    /**
-	     * Adds a byte data part to this multipart form.
+			return this;
+		}
+		
+		/**
+		 * Adds a byte data part to this multipart form.
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the file part.
-	     * @param dataIn the input data.
+		 * @param dataIn the input data.
 		 * @return itself, for chaining.
-	     */
-	    public MultipartFormContent addDataPart(String name, String mimeType, byte[] dataIn)
-	    {
-	    	return addDataPart(name, mimeType, null, null, dataIn);
-	    }
+		 */
+		public MultipartFormContent addDataPart(String name, String mimeType, byte[] dataIn)
+		{
+			return addDataPart(name, mimeType, null, null, dataIn);
+		}
 	
-	    /**
-	     * Adds a byte data part to this multipart form as though it came from a file.
+		/**
+		 * Adds a byte data part to this multipart form as though it came from a file.
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the file part.
-	     * @param fileName the name of the file, as though this were originating from a file (can be null, for "no file").
-	     * @param dataIn the input data.
+		 * @param fileName the name of the file, as though this were originating from a file (can be null, for "no file").
+		 * @param dataIn the input data.
 		 * @return itself, for chaining.
-	     */
-	    public MultipartFormContent addDataPart(String name, String mimeType, String fileName, byte[] dataIn)
-	    {
-	    	return addDataPart(name, mimeType, null, fileName, dataIn);
-	    }
-	    
-	    /**
-	     * Adds a byte data part (translated as text) to this multipart form as though it came from a file.
+		 */
+		public MultipartFormContent addDataPart(String name, String mimeType, String fileName, byte[] dataIn)
+		{
+			return addDataPart(name, mimeType, null, fileName, dataIn);
+		}
+		
+		/**
+		 * Adds a byte data part (translated as text) to this multipart form as though it came from a file.
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the file part.
-	     * @param encoding the encoding type name for the data sent, like 'base64' or 'gzip' or somesuch (can be null to signal no encoding type).
-	     * @param fileName the name of the file, as though this were originating from a file (can be null, for "no file").
-	     * @param dataIn the input data.
+		 * @param encoding the encoding type name for the data sent, like 'base64' or 'gzip' or somesuch (can be null to signal no encoding type).
+		 * @param fileName the name of the file, as though this were originating from a file (can be null, for "no file").
+		 * @param dataIn the input data.
 		 * @return itself, for chaining.
-	     */
-	    public MultipartFormContent addDataPart(String name, final String mimeType, final String encoding, final String fileName, final byte[] dataIn)
-	    {
-	    	ByteArrayOutputStream bos = new ByteArrayOutputStream(256);
-	    	try {
-	    		// Content Disposition Line
-		    	bos.write(DISPOSITION_HEADER);
-		    	bos.write(DISPOSITION_NAME);
-		    	bos.write(name.getBytes(UTF8));
-		    	bos.write(DISPOSITION_NAME_END);
-		    	if (fileName != null)
-		    	{
-			    	bos.write(DISPOSITION_FILENAME);
-			    	bos.write(fileName.getBytes(UTF8));
-			    	bos.write(DISPOSITION_FILENAME_END);
-		    	}
-		    	bos.write(CRLF);
+		 */
+		public MultipartFormContent addDataPart(String name, final String mimeType, final String encoding, final String fileName, final byte[] dataIn)
+		{
+			ByteArrayOutputStream bos = new ByteArrayOutputStream(256);
+			try {
+				// Content Disposition Line
+				bos.write(DISPOSITION_HEADER);
+				bos.write(DISPOSITION_NAME);
+				bos.write(name.getBytes(UTF8));
+				bos.write(DISPOSITION_NAME_END);
+				if (fileName != null)
+				{
+					bos.write(DISPOSITION_FILENAME);
+					bos.write(fileName.getBytes(UTF8));
+					bos.write(DISPOSITION_FILENAME_END);
+				}
+				bos.write(CRLF);
 
-	    		// Content Type Line
-		    	if (mimeType != null)
-		    	{
-			    	bos.write(TYPE_HEADER);
-			    	bos.write(mimeType.getBytes(UTF8));
-			    	bos.write(CRLF);
-		    	}
+				// Content Type Line
+				if (mimeType != null)
+				{
+					bos.write(TYPE_HEADER);
+					bos.write(mimeType.getBytes(UTF8));
+					bos.write(CRLF);
+				}
 
-		    	// Content transfer encoding
-		    	if (encoding != null)
-		    	{
-		    		bos.write(ENCODING_HEADER);
-			    	bos.write(encoding.getBytes(UTF8));
-			    	bos.write(CRLF);
-		    	}
-		    	
-		    	// Blank line for header end.
-		    	bos.write(CRLF);
-		    	
-		    	// ... data follows here.
+				// Content transfer encoding
+				if (encoding != null)
+				{
+					bos.write(ENCODING_HEADER);
+					bos.write(encoding.getBytes(UTF8));
+					bos.write(CRLF);
+				}
+				
+				// Blank line for header end.
+				bos.write(CRLF);
+				
+				// ... data follows here.
 			} catch (IOException e) {
 				// should never happen.
 				throw new RuntimeException(e);
 			}
 
-	    	final byte[] headerBytes = bos.toByteArray();
-	    	
-	    	addPart(new Part(headerBytes, new PartData() 
-	    	{
+			final byte[] headerBytes = bos.toByteArray();
+			
+			addPart(new Part(headerBytes, new PartData() 
+			{
 				@Override
 				public long getDataLength() 
 				{
@@ -540,8 +540,8 @@ public final class HTTPUtils
 					return new ByteArrayInputStream(dataIn);
 				}
 			}));
-	    	return this;
-	    }
+			return this;
+		}
 
 		@Override
 		public String getContentType()
@@ -572,22 +572,22 @@ public final class HTTPUtils
 		{
 			return new MultiformInputStream();
 		}
-	    
+		
 		/**
 		 * Part data.
 		 */
 		private interface PartData
 		{
-	        /**
-	         * @return the content length of this part in bytes.
-	         */
-	        long getDataLength();
-	        
-	        /**
-	         * @return an open input stream to read from this part.
-	         * @throws IOException if an I/O error occurs on read.
-	         */
-	        InputStream getInputStream() throws IOException;
+			/**
+			 * @return the content length of this part in bytes.
+			 */
+			long getDataLength();
+			
+			/**
+			 * @return an open input stream to read from this part.
+			 * @throws IOException if an I/O error occurs on read.
+			 */
+			InputStream getInputStream() throws IOException;
 		}
 		
 		/**
@@ -604,30 +604,30 @@ public final class HTTPUtils
 				this.data = data;
 			}
 			
-	        /**
-	         * @return the boundary-plus-header bytes that make up the start of this part.
-	         */
+			/**
+			 * @return the boundary-plus-header bytes that make up the start of this part.
+			 */
 			public byte[] getPartHeaderBytes()
 			{
 				return headerbytes;
 			}
 
-	        /**
-	         * @return the full length of this part, plus headers, in bytes.
-	         */
-	        public long getLength()
-	        {
-				return getPartHeaderBytes().length + data.getDataLength();	        	
-	        }
+			/**
+			 * @return the full length of this part, plus headers, in bytes.
+			 */
+			public long getLength()
+			{
+				return getPartHeaderBytes().length + data.getDataLength();				
+			}
 
-	        /**
-	         * @return an open input stream for reading from this form.
-	         * @throws IOException if an input stream could not be opened.
-	         */
-	        public InputStream getInputStream() throws IOException
-	        {
-				return new PartInputStream();	        	
-	        }
+			/**
+			 * @return an open input stream for reading from this form.
+			 * @throws IOException if an input stream could not be opened.
+			 */
+			public InputStream getInputStream() throws IOException
+			{
+				return new PartInputStream();				
+			}
 
 			private class PartInputStream extends InputStream
 			{

@@ -770,7 +770,19 @@ public final class HTTPUtils
 		{
 			this.map = new HashMap<>(); 
 		}
-		
+
+		/**
+		 * Copies this header object.
+		 * @return a copy of this header.
+		 */
+		public HTTPHeaders copy()
+		{
+			HTTPHeaders out = new HTTPHeaders();
+			for (Map.Entry<String, String> entry : map.entrySet())
+				out.setHeader(entry.getKey(), entry.getValue());
+			return out;
+		}
+
 		/**
 		 * Sets a header.
 		 * @param header the header name.
@@ -796,7 +808,20 @@ public final class HTTPUtils
 		{
 			this.map = new HashMap<>(); 
 		}
-		
+
+		/**
+		 * Copies this parameters object.
+		 * @return a copy of this parameter object.
+		 */
+		public HTTPParameters copy()
+		{
+			HTTPParameters out = new HTTPParameters();
+			for (Map.Entry<String, List<String>> entry : map.entrySet())
+				for (String value : entry.getValue())
+					out.addParameter(entry.getKey(), value);
+			return out;
+		}
+
 		/**
 		 * Adds/creates a parameter.
 		 * @param key the parameter name.
@@ -1519,9 +1544,8 @@ public final class HTTPUtils
 		
 		response.headers = conn.getHeaderFields();
 		response.input = new BufferedInputStream(conn.getInputStream());
-		
 		R out = reader.onHTTPResponse(response);
-		conn.disconnect();
+		response.input.close();
 		return out;
 	}
 	

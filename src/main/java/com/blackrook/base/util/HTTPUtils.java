@@ -828,12 +828,12 @@ public final class HTTPUtils
 		 * @param value the parameter value.
 		 * @return this, for chaining.
 		 */
-		public HTTPParameters addParameter(String key, String value)
+		public HTTPParameters addParameter(String key, Object value)
 		{
 			List<String> list;
 			if ((list = map.get(key)) == null)
 				map.put(key, (list = new LinkedList<>()));
-			list.add(value);
+			list.add(String.valueOf(value));
 			return this;
 		}
 
@@ -844,11 +844,11 @@ public final class HTTPUtils
 		 * @param value the parameter value.
 		 * @return this, for chaining.
 		 */
-		public HTTPParameters setParameter(String key, String value)
+		public HTTPParameters setParameter(String key, Object value)
 		{
 			List<String> list;
 			map.put(key, (list = new LinkedList<>()));
-			list.add(value);
+			list.add(String.valueOf(value));
 			return this;
 		}
 
@@ -859,12 +859,12 @@ public final class HTTPUtils
 		 * @param values the parameter values.
 		 * @return this, for chaining.
 		 */
-		public HTTPParameters setParameter(String key, String... values)
+		public HTTPParameters setParameter(String key, Object... values)
 		{
 			List<String> list;
 			map.put(key, (list = new LinkedList<>()));
-			for (String v : values)
-				list.add(v);
+			for (Object v : values)
+				list.add(String.valueOf(v));
 			return this;
 		}
 

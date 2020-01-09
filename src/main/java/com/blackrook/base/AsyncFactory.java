@@ -631,8 +631,6 @@ public final class AsyncFactory
 		/**
 		 * Gets the exception thrown as a result of this instance completing, making the calling thread wait for its completion.
 		 * @return the exception thrown by the encapsulated task, or null if no exception.
-		 * @throws ExecutionException if the computation threw an exception.
-		 * @throws InterruptedException if the current thread was interrupted while waiting.
 		 */
 		public Exception getException()
 		{

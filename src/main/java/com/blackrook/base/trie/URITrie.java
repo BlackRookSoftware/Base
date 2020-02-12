@@ -158,7 +158,7 @@ public class URITrie<V>
 	}
 	
 	/**
-	 * Attempts to resolve an endpoint for a given URI.
+	 * Attempts to resolve a value for a given URI.
 	 * @param uri the input URI.
 	 * @return a result object detailing the search.
 	 */
@@ -317,17 +317,17 @@ public class URITrie<V>
 		}
 		
 		/**
-		 * Checks if this result has a found entry point in it.
+		 * Checks if this result has a found value in it.
 		 * @return true if so, false if not.
 		 */
-		public boolean hasEndpoint()
+		public boolean hasValue()
 		{
 			return value != null;
 		}
 		
 		/**
 		 * Gets the found value, if any.
-		 * @return an entry point to call, or null if no entry point.
+		 * @return a value to return, or null if no value.
 		 */
 		public V getValue() 
 		{
@@ -346,7 +346,7 @@ public class URITrie<V>
 	}
 
 	/**
-	 * An exception thrown when 
+	 * An exception thrown when a bad URI parse happens.
 	 */
 	public static class ParseException extends RuntimeException
 	{

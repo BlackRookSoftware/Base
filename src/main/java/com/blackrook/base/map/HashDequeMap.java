@@ -1,3 +1,9 @@
+/*******************************************************************************
+ * Copyright (c) 2019-2020 Black Rook Software
+ * 
+ * This program and the accompanying materials are made available under 
+ * the terms of the MIT License, which accompanies this distribution.
+ ******************************************************************************/
 package com.blackrook.base.map;
 
 import java.util.Collection;
@@ -45,7 +51,7 @@ public class HashDequeMap<K, V> extends HashMap<K, Deque<V>>
 
 	/**
 	 * Called to create a new Deque implementation that gets stored in the table.
-	 * By default, this calls <code>new LinkedList<>()</code>.
+	 * By default, this calls <code>new LinkedList%lt;&gt;()</code>.
 	 * @return a new deque.
 	 */
 	protected Deque<V> create()

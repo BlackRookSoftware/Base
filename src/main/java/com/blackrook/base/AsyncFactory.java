@@ -250,6 +250,7 @@ public final class AsyncFactory
 
 	/**
 	 * Spawns a new asynchronous task from a {@link Runnable}.
+	 * @param <T> the return type for the future.
 	 * @param result the result to set on completion.
 	 * @param runnable the runnable to use.
 	 * @return the new instance.
@@ -263,6 +264,7 @@ public final class AsyncFactory
 
 	/**
 	 * Spawns a new asynchronous task from a {@link Callable}.
+	 * @param <T> the return type for the future.
 	 * @param callable the callable to use.
 	 * @return the new instance.
 	 */
@@ -276,6 +278,7 @@ public final class AsyncFactory
 	/**
 	 * Spawns a new asynchronous task from a {@link Cancellable}.
 	 * <p>Note: {@link Monitorable}s are also Cancellables.
+	 * @param <T> the return type for the future.
 	 * @param cancellable the cancellable to use.
 	 * @return the new instance.
 	 */

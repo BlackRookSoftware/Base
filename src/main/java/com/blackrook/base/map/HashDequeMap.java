@@ -51,7 +51,7 @@ public class HashDequeMap<K, V> extends HashMap<K, Deque<V>>
 
 	/**
 	 * Called to create a new Deque implementation that gets stored in the table.
-	 * By default, this calls <code>new LinkedList%lt;&gt;()</code>.
+	 * By default, this calls <code>new LinkedList&lt;&gt;()</code>.
 	 * @return a new deque.
 	 */
 	protected Deque<V> create()

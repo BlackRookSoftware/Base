@@ -387,7 +387,176 @@ public final class ComponentManager
 		}
 	}
 
+	/**
+	 * Ordered object encapsulation. 
+	 */
+	private static class OrderedObject
+	{
+		int ordering;
+		Object instance;
+		
+		public OrderedObject(int ordering, Object instance)
+		{
+			this.ordering = ordering;
+			this.instance = instance;
+		}
+	}
+
 	/*===============================================================*/
+	
+	/** Map of class to Singleton instance. */
+	private Map<Class<?>, Object> singletonMap;
+	/** Map of class to list of similar-typed singleton components. */
+	private Map<Class<?>, List<OrderedObject>> singletonTypeMap;
+
+	/*===============================================================*/
+
+	// Creates the component manager.
+	private ComponentManager()
+	{
+		this.singletonMap = new HashMap<>();
+		this.singletonTypeMap = new HashMap<>();
+	}
+	
+	// Scans all classes.
+	private Blueprint scanPackages(String[] packageRoots)
+	{
+		Blueprint out = new Blueprint();
+		for (String packageName : packageRoots)
+			for (String className : getClasses(packageName))
+				out.scanClass(className);
+		return out;
+	}
+	
+	// Creates all components.
+	private void createComponents(Blueprint blueprint)
+	{
+		Set<Class<?>> classesInstantiating = new HashSet<>();
+		// Only need to crawl through singletons.
+		for (Class<?> componentClass : blueprint.singletonTypes)
+			createOrGet(blueprint, classesInstantiating, blueprint.resolveProvider(componentClass), null);
+	}
+
+	private void addSingletonInstanceType(Class<?> clazz, OrderedObject instance)
+	{
+		List<OrderedObject> list;
+		if ((list = singletonTypeMap.get(clazz)) == null)
+			singletonTypeMap.put(clazz, list = new ArrayList<>(4));
+		list.add(instance);
+
+		// insertion sort.
+		int i = list.size() - 1;
+		OrderedObject temp;
+		while (i > 0 && (temp = list.get(i - 1)).ordering > instance.ordering)
+		{
+			list.set(i - 1, instance);
+			list.set(i, temp);
+			i--;
+		}
+	}
+	
+	private void addSingletonInstanceTypeTree(Class<?> clazz, OrderedObject instance)
+	{
+		if (clazz == null)
+			return;
+		addSingletonInstanceType(clazz, instance);
+		for (Class<?> iface : clazz.getInterfaces())
+			addSingletonInstanceTypeTree(iface, instance);
+		addSingletonInstanceTypeTree(clazz.getSuperclass(), instance);
+	}
+	
+	@SuppressWarnings("unchecked")
+	private <T> T createOrGet(Blueprint blueprint, Set<Class<?>> classesInstantiating, Provider creatingProvider, Class<?> dependentClass)
+	{
+		Class<?> classToCreate = creatingProvider.classToProvide();
+		
+		if (classesInstantiating.contains(classToCreate))
+			throw new ComponentException("Circular dependency: Class " + classToCreate.getName() + " is already being constructed.");
+		
+		// return singleton if already made.
+		if (singletonMap.containsKey(classToCreate))
+			return (T)singletonMap.get(classToCreate);
+		
+		if (!blueprint.singletonTypes.contains(classToCreate) && !blueprint.nonSingletonTypes.contains(classToCreate))
+			throw new ComponentException("Class " + classToCreate.getName() + " is not a component nor component factory.");
+		
+		classesInstantiating.add(classToCreate);
+
+		// Instantiate provider parameters.
+		List<Object> objects = new ArrayList<Object>();
+		Parameter[] parameters = creatingProvider.parameters;
+		Class<?>[] parameterTypes = creatingProvider.parameterTypes;
+		for (int i = 0; i < parameters.length; i++)
+		{
+			if (!creatingProvider.isSingleton() 
+				&& parameterTypes[i] == Class.class 
+				&& parameters[i].isAnnotationPresent(ConstructingClass.class))
+			{
+				objects.add(dependentClass);
+			}
+			else
+			{
+				Provider fetchingProvider = blueprint.resolveProvider(parameterTypes[i]);				
+				objects.add(createOrGet(
+					blueprint,
+					classesInstantiating, 
+					fetchingProvider, 
+					!fetchingProvider.isSingleton() ? classToCreate : null
+				));
+			}
+		}
+		
+		Object[] params = new Object[objects.size()];
+		objects.toArray(params);
+
+		T created = (T)creatingProvider.provide(
+			creatingProvider.factoryClass != null ? createOrGet(blueprint, classesInstantiating, blueprint.resolveProvider(creatingProvider.factoryClass), null) : null, 
+			params
+		);
+		
+		if (classToCreate.isAnnotationPresent(Singleton.class) || classToCreate.isAnnotationPresent(ComponentFactory.class))
+		{
+			singletonMap.put(classToCreate, created);
+			
+			int ordering = 0;
+			Ordering orderingAnno;
+			if ((orderingAnno = classToCreate.getAnnotation(Ordering.class)) != null)
+				ordering = orderingAnno.value();
+			
+			addSingletonInstanceTypeTree(classToCreate, new OrderedObject(ordering, created));
+		}
+		
+		classesInstantiating.remove(classToCreate);
+		return (T)created;
+	}
+
+	/**
+	 * Retrieves the singleton instance associated with this class (primary type).
+	 * @param <T> the expected return type.
+	 * @param clazz the desired class.
+	 * @return the associated singleton, or null if no associated singleton instance.
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> T get(Class<T> clazz)
+	{
+		return (T)singletonMap.get(clazz);
+	}
+
+	/**
+	 * Retrieves all created singletons that share the provided type.
+	 * They are returned in the order that their sort order dictates.
+	 * @param <T> the expected return type.
+	 * @param type the desired class type.
+	 * @return the associated singleton, or null if no associated singleton instance.
+	 * @see Ordering
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> Iterable<T> getWithType(Class<T> type)
+	{
+		return (Iterable<T>)singletonTypeMap.get(type).stream()
+			.map((oo)->oo.instance)
+			.collect(Collectors.toList());
+	}
 
 	/**
 	 * Creates a new component manager from a set of class package names.
@@ -622,7 +791,7 @@ public final class ComponentManager
 		fileList.toArray(out);
 		return out;
 	}
-	
+
 	// Scans a directory for classes.
 	private static void scanDirectory(String prefix, List<String> outList, String startingPath, File file)
 	{
@@ -689,175 +858,6 @@ public final class ComponentManager
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
-	}
-
-	/*===============================================================*/
-	
-	/**
-	 * Ordered object encapsulation. 
-	 */
-	private static class OrderedObject
-	{
-		int ordering;
-		Object instance;
-		
-		public OrderedObject(int ordering, Object instance)
-		{
-			this.ordering = ordering;
-			this.instance = instance;
-		}
-	}
-	
-	/** Map of class to Singleton instance. */
-	private Map<Class<?>, Object> singletonMap;
-	/** Map of class to list of similar-typed singleton components. */
-	private Map<Class<?>, List<OrderedObject>> singletonTypeMap;
-
-	// Creates the component manager.
-	private ComponentManager()
-	{
-		this.singletonMap = new HashMap<>();
-		this.singletonTypeMap = new HashMap<>();
-	}
-	
-	// Scans all classes.
-	private Blueprint scanPackages(String[] packageRoots)
-	{
-		Blueprint out = new Blueprint();
-		for (String packageName : packageRoots)
-			for (String className : getClasses(packageName))
-				out.scanClass(className);
-		return out;
-	}
-	
-	// Creates all components.
-	private void createComponents(Blueprint blueprint)
-	{
-		Set<Class<?>> classesInstantiating = new HashSet<>();
-		// Only need to crawl through singletons.
-		for (Class<?> componentClass : blueprint.singletonTypes)
-			createOrGet(blueprint, classesInstantiating, blueprint.resolveProvider(componentClass), null);
-	}
-
-	private void addSingletonInstanceType(Class<?> clazz, OrderedObject instance)
-	{
-		List<OrderedObject> list;
-		if ((list = singletonTypeMap.get(clazz)) == null)
-			singletonTypeMap.put(clazz, list = new ArrayList<>(4));
-		list.add(instance);
-
-		// insertion sort.
-		int i = list.size() - 1;
-		OrderedObject temp;
-		while (i > 0 && (temp = list.get(i - 1)).ordering > instance.ordering)
-		{
-			list.set(i - 1, instance);
-			list.set(i, temp);
-			i--;
-		}
-	}
-	
-	private void addSingletonInstanceTypeTree(Class<?> clazz, OrderedObject instance)
-	{
-		if (clazz == null)
-			return;
-		addSingletonInstanceType(clazz, instance);
-		for (Class<?> iface : clazz.getInterfaces())
-			addSingletonInstanceTypeTree(iface, instance);
-		addSingletonInstanceTypeTree(clazz.getSuperclass(), instance);
-	}
-	
-	@SuppressWarnings("unchecked")
-	private <T> T createOrGet(Blueprint blueprint, Set<Class<?>> classesInstantiating, Provider creatingProvider, Class<?> dependentClass)
-	{
-		Class<?> classToCreate = creatingProvider.classToProvide();
-		
-		if (classesInstantiating.contains(classToCreate))
-			throw new ComponentException("Circular dependency: Class " + classToCreate.getName() + " is already being constructed.");
-		
-		// return singleton if already made.
-		if (singletonMap.containsKey(classToCreate))
-			return (T)singletonMap.get(classToCreate);
-		
-		if (!blueprint.singletonTypes.contains(classToCreate) && !blueprint.nonSingletonTypes.contains(classToCreate))
-			throw new ComponentException("Class " + classToCreate.getName() + " is not a component nor component factory.");
-		
-		classesInstantiating.add(classToCreate);
-
-		// Instantiate provider parameters.
-		List<Object> objects = new ArrayList<Object>();
-		Parameter[] parameters = creatingProvider.parameters;
-		Class<?>[] parameterTypes = creatingProvider.parameterTypes;
-		for (int i = 0; i < parameters.length; i++)
-		{
-			if (!creatingProvider.isSingleton() 
-				&& parameterTypes[i] == Class.class 
-				&& parameters[i].isAnnotationPresent(ConstructingClass.class))
-			{
-				objects.add(dependentClass);
-			}
-			else
-			{
-				Provider fetchingProvider = blueprint.resolveProvider(parameterTypes[i]);				
-				objects.add(createOrGet(
-					blueprint,
-					classesInstantiating, 
-					fetchingProvider, 
-					!fetchingProvider.isSingleton() ? classToCreate : null
-				));
-			}
-		}
-		
-		Object[] params = new Object[objects.size()];
-		objects.toArray(params);
-
-		T created = (T)creatingProvider.provide(
-			creatingProvider.factoryClass != null ? createOrGet(blueprint, classesInstantiating, blueprint.resolveProvider(creatingProvider.factoryClass), null) : null, 
-			params
-		);
-		
-		if (classToCreate.isAnnotationPresent(Singleton.class) || classToCreate.isAnnotationPresent(ComponentFactory.class))
-		{
-			singletonMap.put(classToCreate, created);
-			
-			int ordering = 0;
-			Ordering orderingAnno;
-			if ((orderingAnno = classToCreate.getAnnotation(Ordering.class)) != null)
-				ordering = orderingAnno.value();
-			
-			addSingletonInstanceTypeTree(classToCreate, new OrderedObject(ordering, created));
-		}
-		
-		classesInstantiating.remove(classToCreate);
-		return (T)created;
-	}
-
-	/**
-	 * Retrieves the singleton instance associated with this class (primary type).
-	 * @param <T> the expected return type.
-	 * @param clazz the desired class.
-	 * @return the associated singleton, or null if no associated singleton instance.
-	 */
-	@SuppressWarnings("unchecked")
-	public <T> T get(Class<T> clazz)
-	{
-		return (T)singletonMap.get(clazz);
-	}
-
-	/**
-	 * Retrieves all created singletons that share the provided type.
-	 * They are returned in the order that their sort order dictates.
-	 * @param <T> the expected return type.
-	 * @param type the desired class type.
-	 * @return the associated singleton, or null if no associated singleton instance.
-	 * @see Ordering
-	 */
-	@SuppressWarnings("unchecked")
-	public <T> Iterable<T> getWithType(Class<T> type)
-	{
-		return (Iterable<T>)singletonTypeMap.get(type).stream()
-			.map((oo)->oo.instance)
-			.collect(Collectors.toList());
 	}
 
 }

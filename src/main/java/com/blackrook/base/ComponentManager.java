@@ -7,6 +7,7 @@ package com.blackrook.base;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -406,8 +407,11 @@ public final class ComponentManager
 	
 	/** Map of class to Singleton instance. */
 	private Map<Class<?>, Object> singletonMap;
+
 	/** Map of class to list of similar-typed singleton components. */
 	private Map<Class<?>, List<OrderedObject>> singletonTypeMap;
+	/** Map of class to list of similar-typed singleton components that have an additional annotation. */
+	private Map<Class<? extends Annotation>, List<OrderedObject>> singletonAnnotationMap;
 
 	/*===============================================================*/
 
@@ -416,6 +420,7 @@ public final class ComponentManager
 	{
 		this.singletonMap = new HashMap<>();
 		this.singletonTypeMap = new HashMap<>();
+		this.singletonAnnotationMap = new HashMap<>();
 	}
 	
 	// Scans all classes.
@@ -442,8 +447,19 @@ public final class ComponentManager
 		List<OrderedObject> list;
 		if ((list = singletonTypeMap.get(clazz)) == null)
 			singletonTypeMap.put(clazz, list = new ArrayList<>(4));
-		list.add(instance);
+		addSingletonInstanceTypeToOrderedList(instance, list);
+		
+		for (Annotation a : clazz.getAnnotations())
+		{
+			if ((list = singletonAnnotationMap.get(a.annotationType())) == null)
+				singletonAnnotationMap.put(a.annotationType(), list = new ArrayList<>(4));
+			addSingletonInstanceTypeToOrderedList(instance, list);
+		}		
+	}
 
+	private void addSingletonInstanceTypeToOrderedList(OrderedObject instance, List<OrderedObject> list) 
+	{
+		list.add(instance);
 		// insertion sort.
 		int i = list.size() - 1;
 		OrderedObject temp;
@@ -559,8 +575,22 @@ public final class ComponentManager
 	}
 
 	/**
+	 * Retrieves all created singletons that also share an additional annotation.
+	 * They are returned in the order that their sort order dictates.
+	 * @param type the desired class type.
+	 * @return the associated singleton, or null if no associated singleton instance.
+	 * @see Ordering
+	 */
+	public Iterable<Object> getWithAnnotation(Class<? extends Annotation> type)
+	{
+		return (Iterable<Object>)singletonAnnotationMap.get(type).stream()
+			.map((oo)->oo.instance)
+			.collect(Collectors.toList());
+	}
+
+	/**
 	 * Creates a new component manager from a set of class package names.
-	 * Be careful! This will scan <i>EVERY</i> class in the
+	 * Be careful! This will scan <i>EVERY</i> class in the provided packages, as well as subpackages, putting them in metaspace!
 	 * @param packages the list of packages.
 	 * @return a new ComponentManager with all of the classes/components instantiated.
 	 * @throws ComponentException if a component instantiation or setup encounters a problem.

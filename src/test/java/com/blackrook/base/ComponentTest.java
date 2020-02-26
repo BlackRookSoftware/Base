@@ -5,6 +5,7 @@
  ******************************************************************************/
 package com.blackrook.base;
 
+import com.blackrook.base.ComponentManager.Ordering;
 import com.blackrook.base.componenttest.Drivable;
 import com.blackrook.base.componenttest.FordCar;
 import com.blackrook.base.componenttest.Loggable;
@@ -17,8 +18,17 @@ public final class ComponentTest
 	{
 		ComponentManager manager = ComponentManager.create("com.blackrook.base.componenttest");
 		FordCar car = manager.get(FordCar.class);
-		Iterable<Drivable> drivables = manager.getWithType(Drivable.class);
-		Iterable<Stealable> stealables = manager.getWithType(Stealable.class);
+		
+		System.out.println("Drivables:");
+		manager.getWithType(Drivable.class).forEach((x)->System.out.println(x.toString()));
+		
+		System.out.println("Stealables:");
+		manager.getWithType(Stealable.class).forEach((x)->System.out.println(x.toString()));
+		
+		System.out.println("Ordered:");
+		manager.getWithAnnotation(Ordering.class).forEach((x)->System.out.println(x.toString()));
+
+		System.out.println("Loggables:");
 		manager.getWithType(Loggable.class).forEach((l)->l.log("Butts LOL"));
 	}
 }

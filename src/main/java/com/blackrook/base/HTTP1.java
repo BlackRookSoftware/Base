@@ -11,6 +11,8 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
 import java.util.regex.Pattern;
 
 /**
@@ -22,10 +24,14 @@ public final class HTTP1
 	private static final Charset ISO_8859_1 = Charset.forName("ISO-8859-1");
 	private static final String CRLF = "\r\n";
 	private static final Pattern ILLEGAL_TOKEN = Pattern.compile("[0-9\\s\",:;<=>\\?@\\[\\\\\\]\\{\\}]");
-	private static final String HEXALPHABET = "0123456789ABCDEF";
 
 	private static final ThreadLocal<byte[]> BUFFER = ThreadLocal.withInitial(()->new byte[4096]);
-	private static final ThreadLocal<SimpleDateFormat> ISO_DATE = ThreadLocal.withInitial(()->new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z"));
+	private static final ThreadLocal<SimpleDateFormat> ISO_DATE = ThreadLocal.withInitial(()->
+	{
+		SimpleDateFormat out = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
+		out.setTimeZone(TimeZone.getTimeZone("GMT"));
+		return out;
+	});
 
 	/**
 	 * HTTP Version.

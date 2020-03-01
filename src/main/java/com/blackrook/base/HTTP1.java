@@ -1,19 +1,26 @@
 package com.blackrook.base;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.Flushable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CharsetEncoder;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
-import java.util.regex.Pattern;
+import java.util.function.Consumer;
 
 /**
  * HTTP 1.0/1.1 Functions
@@ -21,11 +28,25 @@ import java.util.regex.Pattern;
  */
 public final class HTTP1
 {
-	private static final Charset ISO_8859_1 = Charset.forName("ISO-8859-1");
-	private static final String CRLF = "\r\n";
-	private static final Pattern ILLEGAL_TOKEN = Pattern.compile("[0-9\\s\",:;<=>\\?@\\[\\\\\\]\\{\\}]");
+	private static final String MALFORMED_NAME = "---MALFORMED---";
+	private static final Charset ASCII = Charset.forName("ASCII");
+	private static final CharsetEncoder ASCIIENC = ASCII.newEncoder();
+	//private static final CharsetDecoder ASCIIDEC = ASCII.newDecoder();
+	private static final Charset UTF8 = Charset.forName("UTF-8");
+	private static final String HEXALPHABET = "0123456789ABCDEF";
+	private static final byte[] CRLF = "\r\n".getBytes(ASCII);
+
+	private static final char[] CHARS_ILLEGAL_TOKEN = apply("0123456789 \",:;,=>?@[]{}\\".toCharArray(), (a)->Arrays.sort(a));
+	private static final char[] CHARS_METHOD = apply("ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray(), (a)->Arrays.sort(a));
+	private static final char[] CHARS_URI = apply("!#$%&/;=?~abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray(), (a)->Arrays.sort(a));
+	private static final char[] CHARS_VERSION = apply("10./HTP".toCharArray(), (a)->Arrays.sort(a));
+	private static final char[] CHARS_STATUS_CODE = apply("0123456789".toCharArray(), (a)->Arrays.sort(a));
+	private static final char[] CHARS_HEADER_NAME = apply("0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".toCharArray(), (a)->Arrays.sort(a));
 
 	private static final ThreadLocal<byte[]> BUFFER = ThreadLocal.withInitial(()->new byte[4096]);
+	private static final ThreadLocal<ByteBuffer> BYTEBUFFER = ThreadLocal.withInitial(()->ByteBuffer.allocate(2048));
+	private static final ThreadLocal<CharBuffer> CHARBUFFER = ThreadLocal.withInitial(()->CharBuffer.allocate(2048));
+	private static final ThreadLocal<StringBuilder> STRINGBUILDER = ThreadLocal.withInitial(()->new StringBuilder(128));
 	private static final ThreadLocal<SimpleDateFormat> ISO_DATE = ThreadLocal.withInitial(()->
 	{
 		SimpleDateFormat out = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
@@ -34,12 +55,28 @@ public final class HTTP1
 	});
 
 	/**
+	 * Kotlin-esque "apply" functionality facilitator.
+	 */
+	private static <T> T apply(T input, Consumer<T> applier)
+	{
+		applier.accept(input);
+		return input;
+	}
+	
+	/**
 	 * HTTP Version.
 	 */
 	public enum Version
 	{
 		HTTP10("HTTP/1.0"),
-		HTTP11("HTTP/1.1");
+		HTTP11("HTTP/1.1"),
+		UNKNOWN("UNKNOWN");
+
+		private static final Map<String, Version> VERSION_STRING_MAP = apply(new HashMap<>(1, 1f), (m)->
+		{
+			for (Version v : values())
+				m.put(v.getVersionString(), v);
+		});
 		
 		private final String versionString;
 		private Version(String versionString)
@@ -51,24 +88,205 @@ public final class HTTP1
 		{
 			return versionString;
 		}
+		
+	}
+	
+	/**
+	 * Request header.
+	 */
+	public static class RequestHeader
+	{
+		/**
+		 * The RequestHeader object returned when a malformed HTTP request header is read.
+		 */
+		public static final RequestHeader MALFORMED = apply(new RequestHeader(), (h)->
+		{
+			h.method = MALFORMED_NAME;
+			h.uri = null;
+			h.version = null;
+		});
+		
+		private String method;
+		private String uri;
+		private Version version;
+		
+		/**
+		 * @return the request method.
+		 */
+		public String getMethod()
+		{
+			return method;
+		}
+		
+		/**
+		 * @return the request URI.
+		 */
+		public String getURI() 
+		{
+			return uri;
+		}
+		
+		/**
+		 * @return the request HTTP version.
+		 */
+		public Version getVersion() 
+		{
+			return version;
+		}
+		
+		/**
+		 * Tests if the header is a malformed header.
+		 * @return true if so, false if not.
+		 */
+		public boolean isMalformed()
+		{
+			return this == MALFORMED;
+		}
+
+		@Override
+		public String toString() 
+		{
+			return method + " " + uri + " " + version.getVersionString();
+		}
+	}
+	
+	/**
+	 * Response header.
+	 */
+	public static class ResponseHeader
+	{
+		/**
+		 * The RequestHeader object returned when a malformed HTTP request header is read.
+		 */
+		public static final ResponseHeader MALFORMED = apply(new ResponseHeader(), (h)->
+		{
+			h.statusDescription = MALFORMED_NAME;
+			h.version = null;
+			h.statusCode = 0;
+		});
+		
+		private Version version;
+		private int statusCode;
+		private String statusDescription;
+		
+		/**
+		 * @return the request HTTP version.
+		 */
+		public Version getVersion() 
+		{
+			return version;
+		}
+
+		/**
+		 * @return the HTTP status code.
+		 */
+		public int getStatusCode() 
+		{
+			return statusCode;
+		}
+
+		/**
+		 * @return the status description.
+		 */
+		public String getStatusDescription()
+		{
+			return statusDescription;
+		}
+		
+		/**
+		 * Tests if the header is a malformed header.
+		 * @return true if so, false if not.
+		 */
+		public boolean isMalformed()
+		{
+			return this == MALFORMED;
+		}
+		
+		@Override
+		public String toString() 
+		{
+			return version.getVersionString() + " " + statusCode + " " + statusDescription;
+		}
+	}
+	
+	/**
+	 * An HTTP Header read from a request/response. 
+	 */
+	public static class Header
+	{
+		/**
+		 * The Header object returned when a malformed HTTP header is read.
+		 */
+		public static final Header MALFORMED = apply(new Header(),(h)->
+		{
+			h.name = MALFORMED_NAME;
+			h.value = null;
+		});
+		
+		private String name;
+		private String value;
+		
+		/**
+		 * @return the header name, as read from the transmission.
+		 */
+		public String getName() 
+		{
+			return name;
+		}
+
+		/**
+		 * @return the header value, as read from the transmission.
+		 */
+		public String getValue() 
+		{
+			return value;
+		}
+		
+		/**
+		 * Tests if the header is an expected name.
+		 * This is a more lenient check in accordance with
+		 * how header names are verified (case-insensitively).
+		 * @param name the name to test.
+		 * @return true if matched, false if not.
+		 */
+		public boolean is(String name)
+		{
+			return this.name.equalsIgnoreCase(name);
+		}
+		
+		/**
+		 * Tests if the header is a malformed header.
+		 * @return true if so, false if not.
+		 */
+		public boolean isMalformed()
+		{
+			return this == MALFORMED;
+		}
+		
+		@Override
+		public String toString() 
+		{
+			return name + ": " + value;
+		}
 	}
 	
 	/**
 	 * Encodes a string so that it can be input safely into a URL string.
-	 * FIXME: Turn string into UTF-8 bytes before conversion.
+	 * FIXME: This is hilariously broken.
 	 * @param inString the input string.
 	 * @return the encoded string.
 	 */
-	public static String urlEncode(String inString)
+	public static String uriEncode(String inString)
 	{
+		byte[] inBytes = inString.getBytes(UTF8);
 		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < inString.length(); i++)
+		for (int i = 0; i < inBytes.length; i++)
 		{
-			char c = inString.charAt(i);
-			if (!((c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a)))
-				sb.append(String.format("%%%02x", (short)c));
+			byte b = inBytes[i];
+			if (!((b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5a) || (b >= 0x61 && b <= 0x7a)))
+				sb.append(String.format("%%%02x", 0x0ff & b));
 			else
-				sb.append(c);
+				sb.append((char)(0x0ff & b));
 			i++;
 		}
 		return sb.toString();
@@ -76,51 +294,57 @@ public final class HTTP1
 
 	/**
 	 * Decodes a URL-encoded string.
-	 * FIXME: Read ASCII bytes, then decode as UTF-8
+	 * FIXME: This is untested.
 	 * @param inString the input string.
 	 * @return the decoded string.
 	 */
-	public static String urlDecode(String inString)
+	public static String uriDecode(String inString)
 	{
-		StringBuilder sb = new StringBuilder();
-		char[] chars = new char[2];
-		int x = 0;
-		
+		ByteArrayOutputStream bos = new ByteArrayOutputStream(256);
 		final int STATE_START = 0;
 		final int STATE_DECODE = 1;
 		int state = STATE_START;
 		
+		int x = 0;
+		StringBuilder chars = new StringBuilder(2);
 		for (int i = 0; i < inString.length(); i++)
 		{
 			char c = inString.charAt(i);
-			
 			switch (state)
 			{
 				case STATE_START:
 				{
 					if (c == '%')
 					{
-						x = 0;
 						state = STATE_DECODE;
+						chars.delete(0, 2);
+						x = 0;
 					}
 					else
-						sb.append(c);
+					{
+						bos.write(0x0ff & c);
+					}
 				}
 				break;
 				
 				case STATE_DECODE:
 				{
-					chars[x++] = c;
-					if (x == 2)
+					if (x == 0)
 					{
-						int v = 0;
+						chars.append(c);
+						x++;
+					}
+					else if (x == 1)
+					{
 						try {
-							v = Integer.parseInt(new String(chars), 16);
-							sb.append((char)(v & 0x0ff));
+							bos.write(Integer.parseInt(chars, 0, 2, 16));
 						} catch (NumberFormatException e) {
-							sb.append('%').append(chars[0]).append(chars[1]);
+							bos.write('%');
+							bos.write(chars.charAt(0));
+							bos.write(chars.charAt(1));
 						}
 						state = STATE_START;
+						x = 0;
 					}
 				}
 				break;
@@ -129,12 +353,20 @@ public final class HTTP1
 		
 		if (state == STATE_DECODE)
 		{
-			sb.append('%');
+			bos.write('%');
 			for (int n = 0; n < x; n++)
-				sb.append(chars[n]);
+				bos.write(chars.charAt(x));
 		}
 		
-		return sb.toString();
+		return new String(bos.toByteArray(), UTF8);
+	}
+
+	/**
+	 * @return the date formatter used for parsing dates.
+	 */
+	public static SimpleDateFormat dateFormat()
+	{
+		return ISO_DATE.get();
 	}
 
 	/**
@@ -154,7 +386,22 @@ public final class HTTP1
 	 */
 	public static String date(Date date)
 	{
-		return ISO_DATE.get().format(date);
+		return dateFormat().format(date);
+	}
+
+	/**
+	 * Parses a date.
+	 * @param dateString the date string to parse.
+	 * @return the output date string, or null if not parseable.
+	 * @see #dateFormat()
+	 */
+	public static Date date(String dateString)
+	{
+		try {
+			return dateFormat().parse(dateString);
+		} catch (ParseException e) {
+			return null;
+		}
 	}
 
 	/**
@@ -171,7 +418,7 @@ public final class HTTP1
 		for (int i = 0; i < values.length; i++)
 		{
 			sb.append(values[i]);
-			if (i < values.length)
+			if (i < values.length - 1)
 				sb.append(joiner);
 		}
 		return sb.toString();
@@ -239,10 +486,10 @@ public final class HTTP1
 	public static String keyValue(String key, Object value)
 	{
 		String val = String.valueOf(value);
-		if (ILLEGAL_TOKEN.matcher(val).find())
-			return key + '=' + quoted(val);
-		else
-			return key + '=' + val;
+		for (int i = 0; i < val.length(); i++)
+			if (Arrays.binarySearch(CHARS_ILLEGAL_TOKEN, val.charAt(i)) >= 0)
+				return key + '=' + quoted(val);
+		return key + '=' + val;
 	}
 
 	/**
@@ -267,8 +514,6 @@ public final class HTTP1
 	{
 		/** The wrapped output stream. */
 		private OutputStream outputStream;
-		/** The output stream for writing encoded characters. */
-		private OutputStreamWriter encodedOutputStream;
 		
 		/**
 		 * Creates a new HTTP Writer.
@@ -277,22 +522,19 @@ public final class HTTP1
 		public Writer(OutputStream out)
 		{
 			this.outputStream = out;
-			this.encodedOutputStream = new OutputStreamWriter(outputStream, ISO_8859_1);
 		}
 		
 		@Override
 		public void flush() throws IOException
 		{
-			encodedOutputStream.flush();
 			outputStream.flush();
 		}
 
 		@Override
-		public void close() throws Exception
+		public void close() throws IOException
 		{
 			flush();
 			outputStream.close();
-			encodedOutputStream = null;
 		}
 
 		/**
@@ -301,7 +543,7 @@ public final class HTTP1
 		 */
 		public void writeCRLF() throws IOException
 		{
-			encodedOutputStream.append(CRLF);
+			outputStream.write(CRLF);
 		}
 
 		/**
@@ -311,7 +553,18 @@ public final class HTTP1
 		 */
 		public void writeLine(String line) throws IOException
 		{
-			encodedOutputStream.append(line);
+			CharBuffer cb = CHARBUFFER.get();
+			ByteBuffer bb = BYTEBUFFER.get();
+			try {
+				cb.append(line).flip();
+				ASCIIENC.encode(cb, bb, true);
+				bb.flip();
+				while (bb.hasRemaining())
+					outputStream.write(bb.get());
+			} finally {
+				cb.clear();
+				bb.clear();
+			}
 			writeCRLF();
 		}
 
@@ -322,15 +575,25 @@ public final class HTTP1
 		 * @param uri the URI to read. 
 		 * @param version the HTTP version.
 		 * @throws IOException if a write error occurs.
-		 * @see HTTP1#urlEncode(String)
+		 * @see HTTP1#uriEncode(String)
 		 */
 		public void writeRequestHeader(String method, String uri, Version version) throws IOException
 		{
-			encodedOutputStream
-				.append(method.toUpperCase()).append(' ')
-				.append(urlEncode(uri)).append(' ')
-				.append(version.getVersionString())
-			;
+			CharBuffer cb = CHARBUFFER.get();
+			ByteBuffer bb = BYTEBUFFER.get();
+			try {
+				cb.append(method.toUpperCase()).append(' ')
+					.append(uriEncode(uri)).append(' ')
+					.append(version.getVersionString())
+					.flip();
+				ASCIIENC.encode(cb, bb, true);
+				bb.flip();
+				while (bb.hasRemaining())
+					outputStream.write(bb.get());
+			} finally {
+				cb.clear();
+				bb.clear();
+			}
 			writeCRLF();
 		}
 		
@@ -343,26 +606,57 @@ public final class HTTP1
 		 */
 		public void writeResponseHeader(Version version, int statusCode, String statusMessage) throws IOException
 		{
-			encodedOutputStream
-				.append(version.getVersionString()).append(' ')
-				.append(String.valueOf(statusCode)).append(' ')
-				.append(statusMessage)
-			;
+			CharBuffer cb = CHARBUFFER.get();
+			ByteBuffer bb = BYTEBUFFER.get();
+			try {
+				cb.append(version.getVersionString()).append(' ')
+					.append(String.valueOf(statusCode)).append(' ')
+					.append(statusMessage)
+					.flip();
+				ASCIIENC.encode(cb, bb, true);
+				bb.flip();
+				while (bb.hasRemaining())
+					outputStream.write(bb.get());
+			} finally {
+				cb.clear();
+				bb.clear();
+			}
 			writeCRLF();
 		}
 		
 		/**
 		 * Writes an HTTP header (plus CRLF).
-		 * @param header the header name.
-		 * @param content the header value. 
+		 * @param name the header name.
+		 * @param value the header value (null for blank).
 		 * @throws IOException if a write error occurs.
 		 */
-		public void writeHeader(String header, String content) throws IOException
+		public void writeHeader(String name, Object value) throws IOException
 		{
-			encodedOutputStream
-				.append(header).append(':').append(' ')
-				.append(content)
-			;
+			writeHeader(name, value != null ? String.valueOf(value) : "");
+		}
+		
+		/**
+		 * Writes an HTTP header (plus CRLF).
+		 * @param name the header name.
+		 * @param value the header value. 
+		 * @throws IOException if a write error occurs.
+		 */
+		public void writeHeader(String name, String value) throws IOException
+		{
+			CharBuffer cb = CHARBUFFER.get();
+			ByteBuffer bb = BYTEBUFFER.get();
+			try {
+				cb.append(name).append(':').append(' ')
+					.append(value)
+					.flip();
+				ASCIIENC.encode(cb, bb, true);
+				bb.flip();
+				while (bb.hasRemaining())
+					outputStream.write(bb.get());
+			} finally {
+				cb.clear();
+				bb.clear();
+			}
 			writeCRLF();
 		}
 		
@@ -475,8 +769,6 @@ public final class HTTP1
 	{
 		/** The wrapped input stream. */
 		private InputStream inputStream;
-		/** The input stream for reading encoded characters. */
-		private InputStreamReader decodedInputStream;
 		
 		/**
 		 * Creates a new HTTP Reader.
@@ -485,17 +777,535 @@ public final class HTTP1
 		public Reader(InputStream in)
 		{
 			this.inputStream = in;
-			this.decodedInputStream = new InputStreamReader(inputStream, ISO_8859_1);
 		}
 		
 		@Override
-		public void close() throws Exception
+		public void close() throws IOException
 		{
 			inputStream.close();
-			decodedInputStream = null;
 		}
 		
-		// TODO: Finish this.
+		/**
+		 * Attempts to read an HTTP request header - method, URI, Protocol version, and CRLF.
+		 * @return the read header or {@link RequestHeader#MALFORMED} if malformed.
+		 * @throws IOException if a read error occurs.
+		 */
+		public RequestHeader readRequestHeader() throws IOException
+		{
+			final int STATE_METHOD = 0;
+			final int STATE_URI = 1;
+			final int STATE_VERSION = 2;
+			final int STATE_CR = 3;
+			int state = STATE_METHOD;
+			
+			String method = null;
+			String uri = null;
+			Version version = null;
+			
+			boolean keepGoing = true;
+			StringBuilder sb = STRINGBUILDER.get();
+			try 
+			{
+				int r;
+				char c;
+				while (keepGoing && (r = inputStream.read()) >= 0)
+				{
+					c = (char)r;
+					switch (state)
+					{
+						case STATE_METHOD:
+						{
+							if (Arrays.binarySearch(CHARS_METHOD, c) >= 0)
+							{
+								sb.append(c);
+							}
+							else if (c == ' ')
+							{
+								method = sb.toString();
+								sb.delete(0, sb.length());
+								state = STATE_URI;
+							}
+							else
+							{
+								return RequestHeader.MALFORMED;
+							}
+						}
+						break;
+
+						case STATE_URI:
+						{
+							if (Arrays.binarySearch(CHARS_URI, c) >= 0)
+							{
+								sb.append(c);
+							}
+							else if (c == ' ')
+							{
+								uri = uriDecode(sb.toString());
+								sb.delete(0, sb.length());
+								state = STATE_VERSION;
+							}
+							else
+							{
+								return RequestHeader.MALFORMED;
+							}
+						}
+						break;
+						
+						case STATE_VERSION:
+						{
+							if (Arrays.binarySearch(CHARS_VERSION, c) >= 0)
+							{
+								sb.append(c);
+							}
+							else if (c == '\r')
+							{
+								version = Version.VERSION_STRING_MAP.get(sb.toString());
+								sb.delete(0, sb.length());
+								if (version == null)
+									version = Version.UNKNOWN;
+								state = STATE_CR;
+							}
+							else
+							{
+								return RequestHeader.MALFORMED;
+							}							
+						}
+						break;
+						
+						case STATE_CR:
+						{
+							if (c == '\n')
+							{
+								keepGoing = false;
+							}
+							else
+							{
+								return RequestHeader.MALFORMED;
+							}							
+						}
+						break;
+					}
+				}
+			} 
+			finally 
+			{
+				sb.delete(0, sb.length());
+			}
+			
+			// if true, EOS happened.
+			if (keepGoing)
+				return RequestHeader.MALFORMED;
+			
+			RequestHeader out = new RequestHeader();
+			out.method = method;
+			out.uri = uri;
+			out.version = version;
+			return out;
+		}
+		
+		/**
+		 * Attempts to read an HTTP response header - Protocol version, status code, status description, and CRLF.
+		 * @return the read header or {@link ResponseHeader#MALFORMED} if malformed.
+		 * @throws IOException if a read error occurs.
+		 */
+		public ResponseHeader readResponseHeader() throws IOException
+		{
+			final int STATE_VERSION = 0;
+			final int STATE_CODE = 1;
+			final int STATE_DESCRIPTION = 2;
+			final int STATE_CR = 3;
+			int state = STATE_VERSION;
+			
+			Version version = null;
+			int statusCode = 0;
+			String statusDescription = null;
+			
+			boolean keepGoing = true;
+			StringBuilder sb = STRINGBUILDER.get();
+			try 
+			{
+				int r;
+				char c;
+				while (keepGoing && (r = inputStream.read()) >= 0)
+				{
+					c = (char)r;
+					switch (state)
+					{
+						case STATE_VERSION:
+						{
+							if (Arrays.binarySearch(CHARS_VERSION, c) >= 0)
+							{
+								sb.append(c);
+							}
+							else if (c == ' ')
+							{
+								version = Version.VERSION_STRING_MAP.get(sb.toString());
+								sb.delete(0, sb.length());
+								if (version == null)
+									version = Version.UNKNOWN;
+								state = STATE_CODE;
+							}
+							else
+							{
+								return ResponseHeader.MALFORMED;
+							}							
+						}
+						break;
+						
+						case STATE_CODE:
+						{
+							if (Arrays.binarySearch(CHARS_STATUS_CODE, c) >= 0)
+							{
+								statusCode = (statusCode * 10) + (c - '0');
+							}
+							else if (c == ' ')
+							{
+								state = STATE_DESCRIPTION;
+							}
+							else
+							{
+								return ResponseHeader.MALFORMED;
+							}
+						}
+						break;
+
+						case STATE_DESCRIPTION:
+						{
+							if (c == '\r')
+							{
+								statusDescription = sb.toString();
+								sb.delete(0, sb.length());
+								state = STATE_CR;
+							}
+							else
+							{
+								sb.append(c);
+							}
+						}
+						break;
+
+						case STATE_CR:
+						{
+							if (c == '\n')
+							{
+								keepGoing = false;
+							}
+							else
+							{
+								return ResponseHeader.MALFORMED;
+							}							
+						}
+						break;
+					}
+				}
+			} 
+			finally 
+			{
+				sb.delete(0, sb.length());
+			}
+
+			// if true, EOS happened.
+			if (keepGoing)
+				return ResponseHeader.MALFORMED;
+			
+			ResponseHeader out = new ResponseHeader();
+			out.version = version;
+			out.statusCode = statusCode;
+			out.statusDescription = statusDescription;
+			return out;
+		}
+		
+		/**
+		 * Attempts to read CRLF.
+		 * @return true if CRLF read, false if not (not CRLF, EOS reached).
+		 * @throws IOException if a read error occurs.
+		 */
+		public boolean readCRLF() throws IOException
+		{
+			final int STATE_START = 0;
+			final int STATE_CR = 1;
+			int state = STATE_START;
+
+			int r;
+			char c;
+			boolean keepGoing = true;
+			while (keepGoing && (r = inputStream.read()) >= 0)
+			{
+				c = (char)r;
+				switch (state)
+				{
+					case STATE_START:
+					{
+						if (c == '\r')
+							state = STATE_CR;
+						else
+							return false;
+					}
+					break;
+					
+					case STATE_CR:
+					{
+						if (c == '\n')
+							return true;
+						else
+							return false;
+					}
+				}
+			}
+			
+			return false;
+		}
+		
+		/**
+		 * Attempts to read an HTTP header (plus CRLF).
+		 * @return the header read, {@link Header#MALFORMED} if malformed, or <code>null</code> if a blank line (CRLF) was read.
+		 * @throws IOException if a read error occurs.
+		 */
+		public Header readHeader() throws IOException
+		{
+			final int STATE_INIT = 0;
+			final int STATE_NAME = 1;
+			final int STATE_WHITESPACE = 2;
+			final int STATE_VALUE = 3;
+			final int STATE_CR = 4;
+			int state = STATE_INIT;
+			
+			String name = null;
+			String value = null;
+			
+			boolean keepGoing = true;
+			StringBuilder sb = STRINGBUILDER.get();
+			try 
+			{
+				int r;
+				char c;
+				while (keepGoing && (r = inputStream.read()) >= 0)
+				{
+					c = (char)r;
+					switch (state)
+					{
+						case STATE_INIT:
+						{
+							if (c == '\r')
+							{
+								state = STATE_CR;
+							}
+							else if (Arrays.binarySearch(CHARS_HEADER_NAME, c) >= 0)
+							{
+								sb.append(c);
+								state = STATE_NAME;
+							}
+							else
+							{
+								return Header.MALFORMED;
+							}							
+						}
+						break;
+						
+						case STATE_NAME:
+						{
+							if (Arrays.binarySearch(CHARS_HEADER_NAME, c) >= 0)
+							{
+								sb.append(c);
+							}
+							else if (c == ':')
+							{
+								name = sb.toString();
+								sb.delete(0, sb.length());
+								state = STATE_WHITESPACE;
+							}
+							else
+							{
+								return Header.MALFORMED;
+							}							
+						}
+						break;
+						
+						case STATE_WHITESPACE:
+						{
+							if (c == ' ')
+							{
+								// do nothing. eat character.
+							}
+							else if (c == '\r')
+							{
+								value = "";
+								state = STATE_CR;
+							}
+							else
+							{
+								sb.append(c);
+								state = STATE_VALUE;
+							}
+						}
+						break;
+
+						case STATE_VALUE:
+						{
+							if (c == '\r')
+							{
+								value = sb.toString();
+								sb.delete(0, sb.length());
+								state = STATE_CR;
+							}
+							else
+							{
+								sb.append(c);
+							}
+						}
+						break;
+
+						case STATE_CR:
+						{
+							if (c == '\n')
+							{
+								keepGoing = false;
+							}
+							else
+							{
+								return Header.MALFORMED;
+							}							
+						}
+						break;
+					}
+				}
+			} 
+			finally 
+			{
+				sb.delete(0, sb.length());
+			}
+
+			// if true, EOS happened.
+			if (keepGoing)
+				return Header.MALFORMED;
+			
+			// read CRLF
+			if (name == null)
+				return null;
+			
+			Header out = new Header();
+			out.name = name;
+			out.value = value;
+			return out;
+		}
+
+		/**
+		 * Attempts to read a hex integer value (plus CRLF).
+		 * @return the integer read, or null if bad integer parse.
+		 * @throws IOException if a read error occurs.
+		 */
+		public Integer readHexInteger() throws IOException
+		{
+			final int STATE_START = 0;
+			final int STATE_CR = 1;
+			int state = STATE_START;
+
+			int out = 0;
+			
+			int r;
+			char c;
+			while ((r = inputStream.read()) >= 0)
+			{
+				c = (char)r;
+				switch (state)
+				{
+					case STATE_START:
+					{
+						int n;
+						if ((n = HEXALPHABET.indexOf(c)) >= 0)
+							out = (out << 4) + n;
+						else if (c == '\r')
+							state = STATE_CR;
+						else
+							return null;
+					}
+					break;
+					
+					case STATE_CR:
+					{
+						if (c == '\n')
+							return out;
+						else
+							return null;
+					}
+				}
+			}
+			
+			return null;
+		}
+		
+		/**
+		 * Reads bytes until a blank CRLF line is read.
+		 * @param maxBytes the maximum amount of bytes to read
+		 * @return true if reached before max bytes, false if not.
+		 * @throws IOException if a read error occurs.
+		 */
+		public boolean skipSection(int maxBytes) throws IOException
+		{
+			final int STATE_START = 0;
+			final int STATE_CR = 1;
+			final int STATE_LF = 2;
+			final int STATE_CR2 = 3;
+			int state = STATE_START;
+
+			int r;
+			char c;
+			while (maxBytes-- > 0 && (r = inputStream.read()) >= 0)
+			{
+				c = (char)r;
+				switch (state)
+				{
+					case STATE_START:
+					{
+						if (c == '\r')
+							state = STATE_CR;
+						else
+						{
+							// do nothing. eat character.
+						}
+					}
+					break;
+					
+					case STATE_CR:
+					{
+						if (c == '\n')
+							state = STATE_LF;
+						else
+							state = STATE_START;
+					}
+					break;
+					
+					case STATE_LF:
+					{
+						if (c == '\r')
+							state = STATE_CR2;
+						else
+							state = STATE_START;
+					}
+					break;
+
+					case STATE_CR2:
+					{
+						if (c == '\n')
+							return true;
+						else
+							state = STATE_START;
+					}
+					break;
+				}
+			}
+			
+			return false;
+		}
+		
+		/**
+		 * @return the underlying input stream.
+		 */
+		public InputStream getInputStream() 
+		{
+			return inputStream;
+		}
+		
 	}
 	
 }

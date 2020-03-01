@@ -1,4 +1,9 @@
-package com.blackrook.base;
+/*******************************************************************************
+ * Copyright (c) 2019-2020 Black Rook Software
+ * This program and the accompanying materials are made available under 
+ * the terms of the MIT License, which accompanies this distribution.
+ ******************************************************************************/
+package com.blackrook.base.http;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -10,7 +15,6 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
-import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -31,7 +35,6 @@ public final class HTTP1
 	private static final String MALFORMED_NAME = "---MALFORMED---";
 	private static final Charset ASCII = Charset.forName("ASCII");
 	private static final CharsetEncoder ASCIIENC = ASCII.newEncoder();
-	//private static final CharsetDecoder ASCIIDEC = ASCII.newDecoder();
 	private static final Charset UTF8 = Charset.forName("UTF-8");
 	private static final String HEXALPHABET = "0123456789ABCDEF";
 	private static final byte[] CRLF = "\r\n".getBytes(ASCII);
@@ -53,6 +56,23 @@ public final class HTTP1
 		out.setTimeZone(TimeZone.getTimeZone("GMT"));
 		return out;
 	});
+
+	/** HTTP Method: GET. */
+	public static final String METHOD_GET = "GET"; 
+	/** HTTP Method: HEAD. */
+	public static final String METHOD_HEAD = "HEAD";
+	/** HTTP Method: POST. */
+	public static final String METHOD_POST = "POST";
+	/** HTTP Method: DELETE. */
+	public static final String METHOD_DELETE = "DELETE"; 
+	/** HTTP Method: PUT. */
+	public static final String METHOD_PUT = "PUT";
+	/** HTTP Method: PATCH. */
+	public static final String METHOD_PATCH = "PATCH";
+	/** HTTP Method: TRACE. */
+	public static final String METHOD_TRACE = "TRACE"; 
+	/** HTTP Method: OPTIONS. */
+	public static final String METHOD_OPTIONS = "OPTIONS"; 
 
 	/**
 	 * Kotlin-esque "apply" functionality facilitator.
@@ -92,209 +112,34 @@ public final class HTTP1
 	}
 	
 	/**
-	 * Request header.
-	 */
-	public static class RequestHeader
-	{
-		/**
-		 * The RequestHeader object returned when a malformed HTTP request header is read.
-		 */
-		public static final RequestHeader MALFORMED = apply(new RequestHeader(), (h)->
-		{
-			h.method = MALFORMED_NAME;
-			h.uri = null;
-			h.version = null;
-		});
-		
-		private String method;
-		private String uri;
-		private Version version;
-		
-		/**
-		 * @return the request method.
-		 */
-		public String getMethod()
-		{
-			return method;
-		}
-		
-		/**
-		 * @return the request URI.
-		 */
-		public String getURI() 
-		{
-			return uri;
-		}
-		
-		/**
-		 * @return the request HTTP version.
-		 */
-		public Version getVersion() 
-		{
-			return version;
-		}
-		
-		/**
-		 * Tests if the header is a malformed header.
-		 * @return true if so, false if not.
-		 */
-		public boolean isMalformed()
-		{
-			return this == MALFORMED;
-		}
-
-		@Override
-		public String toString() 
-		{
-			return method + " " + uri + " " + version.getVersionString();
-		}
-	}
-	
-	/**
-	 * Response header.
-	 */
-	public static class ResponseHeader
-	{
-		/**
-		 * The RequestHeader object returned when a malformed HTTP request header is read.
-		 */
-		public static final ResponseHeader MALFORMED = apply(new ResponseHeader(), (h)->
-		{
-			h.statusDescription = MALFORMED_NAME;
-			h.version = null;
-			h.statusCode = 0;
-		});
-		
-		private Version version;
-		private int statusCode;
-		private String statusDescription;
-		
-		/**
-		 * @return the request HTTP version.
-		 */
-		public Version getVersion() 
-		{
-			return version;
-		}
-
-		/**
-		 * @return the HTTP status code.
-		 */
-		public int getStatusCode() 
-		{
-			return statusCode;
-		}
-
-		/**
-		 * @return the status description.
-		 */
-		public String getStatusDescription()
-		{
-			return statusDescription;
-		}
-		
-		/**
-		 * Tests if the header is a malformed header.
-		 * @return true if so, false if not.
-		 */
-		public boolean isMalformed()
-		{
-			return this == MALFORMED;
-		}
-		
-		@Override
-		public String toString() 
-		{
-			return version.getVersionString() + " " + statusCode + " " + statusDescription;
-		}
-	}
-	
-	/**
-	 * An HTTP Header read from a request/response. 
-	 */
-	public static class Header
-	{
-		/**
-		 * The Header object returned when a malformed HTTP header is read.
-		 */
-		public static final Header MALFORMED = apply(new Header(),(h)->
-		{
-			h.name = MALFORMED_NAME;
-			h.value = null;
-		});
-		
-		private String name;
-		private String value;
-		
-		/**
-		 * @return the header name, as read from the transmission.
-		 */
-		public String getName() 
-		{
-			return name;
-		}
-
-		/**
-		 * @return the header value, as read from the transmission.
-		 */
-		public String getValue() 
-		{
-			return value;
-		}
-		
-		/**
-		 * Tests if the header is an expected name.
-		 * This is a more lenient check in accordance with
-		 * how header names are verified (case-insensitively).
-		 * @param name the name to test.
-		 * @return true if matched, false if not.
-		 */
-		public boolean is(String name)
-		{
-			return this.name.equalsIgnoreCase(name);
-		}
-		
-		/**
-		 * Tests if the header is a malformed header.
-		 * @return true if so, false if not.
-		 */
-		public boolean isMalformed()
-		{
-			return this == MALFORMED;
-		}
-		
-		@Override
-		public String toString() 
-		{
-			return name + ": " + value;
-		}
-	}
-	
-	/**
 	 * Encodes a string so that it can be input safely into a URL string.
-	 * FIXME: This is hilariously broken.
 	 * @param inString the input string.
 	 * @return the encoded string.
 	 */
 	public static String uriEncode(String inString)
 	{
 		byte[] inBytes = inString.getBytes(UTF8);
-		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < inBytes.length; i++)
+		StringBuilder sb = STRINGBUILDER.get();
+		try 
 		{
-			byte b = inBytes[i];
-			if (!((b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5a) || (b >= 0x61 && b <= 0x7a)))
-				sb.append(String.format("%%%02x", 0x0ff & b));
-			else
-				sb.append((char)(0x0ff & b));
-			i++;
+			for (int i = 0; i < inBytes.length; i++)
+			{
+				byte b = inBytes[i];
+				if ((b > 0x20 && b < 0x7f))
+					sb.append((char)(0x0ff & b));
+				else
+					sb.append(String.format("%%%02X", 0x0ff & b));
+			}
+			return sb.toString();
+		} 
+		finally 
+		{
+			sb.delete(0, sb.length());
 		}
-		return sb.toString();
 	}
 
 	/**
 	 * Decodes a URL-encoded string.
-	 * FIXME: This is untested.
 	 * @param inString the input string.
 	 * @return the decoded string.
 	 */
@@ -336,6 +181,7 @@ public final class HTTP1
 					}
 					else if (x == 1)
 					{
+						chars.append(c);
 						try {
 							bos.write(Integer.parseInt(chars, 0, 2, 16));
 						} catch (NumberFormatException e) {
@@ -395,7 +241,7 @@ public final class HTTP1
 	 * @return the output date string, or null if not parseable.
 	 * @see #dateFormat()
 	 */
-	public static Date date(String dateString)
+	public static Date parseDate(String dateString)
 	{
 		try {
 			return dateFormat().parse(dateString);
@@ -414,14 +260,21 @@ public final class HTTP1
 	public static String join(String joiner, String ... values)
 	{
 		joiner = String.valueOf(joiner);
-		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < values.length; i++)
+		StringBuilder sb = STRINGBUILDER.get();
+		try 
 		{
-			sb.append(values[i]);
-			if (i < values.length - 1)
-				sb.append(joiner);
+			for (int i = 0; i < values.length; i++)
+			{
+				sb.append(values[i]);
+				if (i < values.length - 1)
+					sb.append(joiner);
+			}
+			return sb.toString();
+		} 
+		finally 
+		{
+			sb.delete(0, sb.length());
 		}
-		return sb.toString();
 	}
 
 	/**
@@ -429,27 +282,80 @@ public final class HTTP1
 	 * @param value the value to stringify and wrap.
 	 * @return the resultant string.
 	 */
-	public static String quoted(Object value)
+	public static String quote(Object value)
 	{
 		String val = String.valueOf(value);
-		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < val.length(); i++)
+		StringBuilder sb = STRINGBUILDER.get();
+		try 
 		{
-			char c = val.charAt(i);
-			if (c == '\\')
-				sb.append('\\').append('\\');
-			else if (c == '"')
-				sb.append('\\').append('"');
-			else if (c == '^')
-				sb.append('\\').append('^');
-			else if (c == '_')
-				sb.append('\\').append('_');
-			else if (c == '`')
-				sb.append('\\').append('`');
-			else
-				sb.append(c);
+			sb.append('"');
+			for (int i = 0; i < val.length(); i++)
+			{
+				char c = val.charAt(i);
+				if (c == '\\')
+					sb.append('\\').append('\\');
+				else if (c == '"')
+					sb.append('\\').append('"');
+				else if (c == '^')
+					sb.append('\\').append('^');
+				else if (c == '_')
+					sb.append('\\').append('_');
+				else if (c == '`')
+					sb.append('\\').append('`');
+				else
+					sb.append(c);
+			}
+			sb.append('"');
+			return sb.toString();
 		}
-		return sb.toString();
+		finally
+		{
+			sb.delete(0, sb.length());
+		}
+	}
+
+	/**
+	 * Unwraps a string that was in double quotes.
+	 * @param value the value to unwrap.
+	 * @return the resultant string.
+	 */
+	public static String unquote(String value)
+	{
+		String val = value.substring(1, value.length() - 1);
+		StringBuilder sb = STRINGBUILDER.get();
+		try 
+		{
+			final int STATE_START = 0;
+			final int STATE_ESCAPE = 1;
+			int state = STATE_START;
+			for (int i = 0; i < val.length(); i++)
+			{
+				char c = val.charAt(i);
+				switch (state)
+				{
+					case STATE_START:
+					{
+						if (c == '\\')
+							state = STATE_ESCAPE;
+						else
+							sb.append(c);
+					}
+					break;
+		
+					case STATE_ESCAPE:
+					{
+						sb.append(c);
+						state = STATE_START;
+					}
+					break;
+				}
+			}
+			return sb.toString();
+		}
+		finally
+		{
+			sb.delete(0, sb.length());
+		}
 	}
 
 	/**
@@ -460,20 +366,73 @@ public final class HTTP1
 	public static String comment(Object value)
 	{
 		String val = String.valueOf(value);
-		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < val.length(); i++)
+		StringBuilder sb = STRINGBUILDER.get();
+		try 
 		{
-			char c = val.charAt(i);
-			if (c == '\\')
-				sb.append('\\').append('\\');
-			else if (c == '(')
-				sb.append('\\').append('(');
-			else if (c == ')')
-				sb.append('\\').append(')');
-			else
-				sb.append(c);
+			sb.append('(');
+			for (int i = 0; i < val.length(); i++)
+			{
+				char c = val.charAt(i);
+				if (c == '\\')
+					sb.append('\\').append('\\');
+				else if (c == '(')
+					sb.append('\\').append('(');
+				else if (c == ')')
+					sb.append('\\').append(')');
+				else
+					sb.append(c);
+			}
+			sb.append(')');
+			return sb.toString();
 		}
-		return sb.toString();
+		finally
+		{
+			sb.delete(0, sb.length());
+		}
+	}
+
+	/**
+	 * Unwraps a string that was in parenthesis.
+	 * @param value the value to unwrap.
+	 * @return the resultant string.
+	 */
+	public static String uncomment(String value)
+	{
+		String val = value.substring(1, value.length() - 1);
+		StringBuilder sb = STRINGBUILDER.get();
+		try 
+		{
+			final int STATE_START = 0;
+			final int STATE_ESCAPE = 1;
+			int state = STATE_START;
+			for (int i = 0; i < val.length(); i++)
+			{
+				char c = val.charAt(i);
+				switch (state)
+				{
+					case STATE_START:
+					{
+						if (c == '\\')
+							state = STATE_ESCAPE;
+						else
+							sb.append(c);
+					}
+					break;
+		
+					case STATE_ESCAPE:
+					{
+						sb.append(c);
+						state = STATE_START;
+					}
+					break;
+				}
+			}
+			return sb.toString();
+		}
+		finally
+		{
+			sb.delete(0, sb.length());
+		}
 	}
 
 	/**
@@ -488,8 +447,56 @@ public final class HTTP1
 		String val = String.valueOf(value);
 		for (int i = 0; i < val.length(); i++)
 			if (Arrays.binarySearch(CHARS_ILLEGAL_TOKEN, val.charAt(i)) >= 0)
-				return key + '=' + quoted(val);
+				return key + '=' + quote(val);
 		return key + '=' + val;
+	}
+
+	/**
+	 * Parses a <code>key=value</code> style string where the key and value are concatenated with an equals sign <code>=</code>.
+	 * Unwraps the value if it is in quotes or parenthesis.
+	 * @param pair the string containing a key-value pair.
+	 * @param outArray the output array for the key and value.
+	 * @param offset the offset into the array to put the key and value.
+	 * @throws IllegalArgumentException if the <code>outArray.length - offset < 2</code>.
+	 */
+	public static void parseKeyValue(String pair, String[] outArray, int offset)
+	{
+		if (outArray.length - offset < 2)
+			throw new IllegalArgumentException("Not enough indices for output strings.");
+		
+		StringBuilder sb = STRINGBUILDER.get();
+		String key = null;
+		String value = null;
+		try 
+		{
+			int i;
+			for (i = 0; i < pair.length(); i++)
+			{
+				char c = pair.charAt(i);
+				if (c != '=')
+					sb.append(c);
+				else
+				{
+					key = sb.toString();
+					i++;
+					break;
+				}
+			}
+			
+			if (pair.charAt(i) == '"')
+				value = unquote(pair.substring(i));
+			else if (pair.charAt(i) == '(')
+				value = uncomment(pair.substring(i));
+			else
+				value = pair.substring(i);
+		}
+		finally
+		{
+			sb.delete(0, sb.length());
+		}
+		
+		outArray[offset] = key;
+		outArray[offset + 1] = value;
 	}
 
 	/**
@@ -767,6 +774,185 @@ public final class HTTP1
 	 */
 	public static class Reader implements AutoCloseable
 	{
+		/**
+		 * Request header.
+		 */
+		public static class RequestHeader
+		{
+			/**
+			 * The RequestHeader object returned when a malformed HTTP request header is read.
+			 */
+			public static final RequestHeader MALFORMED = apply(new RequestHeader(), (h)->
+			{
+				h.method = MALFORMED_NAME;
+				h.uri = null;
+				h.version = null;
+			});
+			
+			private String method;
+			private String uri;
+			private Version version;
+			
+			/**
+			 * @return the request method.
+			 */
+			public String getMethod()
+			{
+				return method;
+			}
+			
+			/**
+			 * @return the request URI.
+			 */
+			public String getURI() 
+			{
+				return uri;
+			}
+			
+			/**
+			 * @return the request HTTP version.
+			 */
+			public Version getVersion() 
+			{
+				return version;
+			}
+			
+			/**
+			 * Tests if the header is a malformed header.
+			 * @return true if so, false if not.
+			 */
+			public boolean isMalformed()
+			{
+				return this == MALFORMED;
+			}
+		
+			@Override
+			public String toString() 
+			{
+				return method + " " + uri + " " + version.getVersionString();
+			}
+		}
+
+		/**
+		 * Response header.
+		 */
+		public static class ResponseHeader
+		{
+			/**
+			 * The RequestHeader object returned when a malformed HTTP request header is read.
+			 */
+			public static final ResponseHeader MALFORMED = apply(new ResponseHeader(), (h)->
+			{
+				h.statusDescription = MALFORMED_NAME;
+				h.version = null;
+				h.statusCode = 0;
+			});
+			
+			private Version version;
+			private int statusCode;
+			private String statusDescription;
+			
+			/**
+			 * @return the request HTTP version.
+			 */
+			public Version getVersion() 
+			{
+				return version;
+			}
+		
+			/**
+			 * @return the HTTP status code.
+			 */
+			public int getStatusCode() 
+			{
+				return statusCode;
+			}
+		
+			/**
+			 * @return the status description.
+			 */
+			public String getStatusDescription()
+			{
+				return statusDescription;
+			}
+			
+			/**
+			 * Tests if the header is a malformed header.
+			 * @return true if so, false if not.
+			 */
+			public boolean isMalformed()
+			{
+				return this == MALFORMED;
+			}
+			
+			@Override
+			public String toString() 
+			{
+				return version.getVersionString() + " " + statusCode + " " + statusDescription;
+			}
+		}
+
+		/**
+		 * An HTTP Header read from a request/response. 
+		 */
+		public static class Header
+		{
+			/**
+			 * The Header object returned when a malformed HTTP header is read.
+			 */
+			public static final Header MALFORMED = apply(new Header(),(h)->
+			{
+				h.name = MALFORMED_NAME;
+				h.value = null;
+			});
+			
+			private String name;
+			private String value;
+			
+			/**
+			 * @return the header name, as read from the transmission.
+			 */
+			public String getName() 
+			{
+				return name;
+			}
+		
+			/**
+			 * @return the header value, as read from the transmission.
+			 */
+			public String getValue() 
+			{
+				return value;
+			}
+			
+			/**
+			 * Tests if the header is an expected name.
+			 * This is a more lenient check in accordance with
+			 * how header names are verified (case-insensitively).
+			 * @param name the name to test.
+			 * @return true if matched, false if not.
+			 */
+			public boolean is(String name)
+			{
+				return this.name.equalsIgnoreCase(name);
+			}
+			
+			/**
+			 * Tests if the header is a malformed header.
+			 * @return true if so, false if not.
+			 */
+			public boolean isMalformed()
+			{
+				return this == MALFORMED;
+			}
+			
+			@Override
+			public String toString() 
+			{
+				return name + ": " + value;
+			}
+		}
+
 		/** The wrapped input stream. */
 		private InputStream inputStream;
 		
@@ -1212,7 +1398,7 @@ public final class HTTP1
 					case STATE_START:
 					{
 						int n;
-						if ((n = HEXALPHABET.indexOf(c)) >= 0)
+						if ((n = HEXALPHABET.indexOf(Character.toUpperCase(c))) >= 0)
 							out = (out << 4) + n;
 						else if (c == '\r')
 							state = STATE_CR;

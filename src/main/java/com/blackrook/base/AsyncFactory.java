@@ -22,7 +22,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Factory for crateing a thread pool that handles asynchronous tasks.
+ * Factory for creating a thread pool that handles asynchronous tasks.
  * <p>This class uses an internal thread pool to facilitate asynchronous operations. All {@link Instance}s that the
  * "spawn" methods return are handles to the running routine, and are equivalent to {@link Future}s.
  * @author Matthew Tropiano

@@ -851,7 +851,7 @@ public final class SQLUtils
 		/** Rows affected or returned in the query. */
 		protected int rowCount;
 		/** Next id, if generated. */
-		protected long[] nextId;
+		protected Object[] nextId;
 		/** Was this an update query? */
 		protected boolean update;
 		/** List of rows of associative data. */
@@ -867,14 +867,14 @@ public final class SQLUtils
 			this.rowCount = rowsAffected;
 			this.rows = null;
 			
-			List<Long> vect = new ArrayList<Long>();
+			List<Object> vect = new ArrayList<Object>();
 			while (genKeys.next())
 				vect.add(genKeys.getLong(1));
 			
-			this.nextId = new long[vect.size()];
+			this.nextId = new Object[vect.size()];
 			int x = 0;
-			for (long lng : vect)
-				this.nextId[x++] = lng; 
+			for (Object obj : vect)
+				this.nextId[x++] = obj; 
 		}
 
 		/**
@@ -941,7 +941,7 @@ public final class SQLUtils
 		/**
 		 * @return the generated id from the last query, if any, or null if none.
 		 */
-		public Long getId()
+		public Object getId()
 		{
 			return nextId.length > 0 ? nextId[0] : null;
 		}
@@ -949,7 +949,7 @@ public final class SQLUtils
 		/**
 		 * @return the list of generated ids from the last query.
 		 */
-		public long[] getIds()
+		public Object[] getIds()
 		{
 			return nextId;
 		}

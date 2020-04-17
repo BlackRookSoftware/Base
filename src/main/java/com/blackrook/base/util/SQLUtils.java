@@ -1064,7 +1064,6 @@ public final class SQLUtils
 
 		/**
 		 * Commits the actions completed so far in this transaction.
-		 * This is also called during {@link #complete()}.
 		 * @throws IllegalStateException if this transaction was already committed/rolled back.
 		 * @throws SQLException if this causes a database error.
 		 */

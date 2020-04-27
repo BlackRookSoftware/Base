@@ -1055,6 +1055,7 @@ public final class SQLUtils
 
 		private Transaction(Connection connection, TransactionLevel transactionLevel) throws SQLException
 		{
+			this.connection = connection;
 			this.previousLevelState = connection.getTransactionIsolation();
 			this.previousAutoCommit = connection.getAutoCommit();
 			this.finished = false;

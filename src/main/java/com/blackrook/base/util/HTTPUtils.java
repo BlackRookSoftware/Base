@@ -53,25 +53,11 @@ public final class HTTPUtils
 
 	private HTTPUtils() {}
 	
-	private static final Charset UTF8;
-	private static final String[] VALID_HTTP;
-	private static final byte[] URL_RESERVED;
-	private static final byte[] URL_UNRESERVED;
+	private static final Charset UTF8 = Charset.forName("utf-8");
+	private static final String[] VALID_HTTP = new String[]{"http", "https"};
+	private static final byte[] URL_RESERVED = "!#$%&'()*+,/:;=?@[]".getBytes(UTF8);
+	private static final byte[] URL_UNRESERVED = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~".getBytes(UTF8);
 
-	static
-	{
-		try {
-			UTF8 = Charset.forName("utf-8");
-			// Keep alphabetical.
-			VALID_HTTP = new String[]{"http", "https"};
-			// must be in this order!
-			URL_RESERVED = "!#$%&'()*+,/:;=?@[]".getBytes("utf-8");
-			URL_UNRESERVED = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~".getBytes("utf-8");
-		} catch (UnsupportedEncodingException e) {
-			throw new RuntimeException("JVM does not support ASCII encoding [INTERNAL ERROR].", e);
-		}
-	}
-	
 	private static class BlobContent implements HTTPContent
 	{
 		private String contentType;
@@ -759,6 +745,37 @@ public final class HTTPUtils
 	}
 
 	/**
+	 * Key-Value pair.
+	 */
+	public static class KeyValue
+	{
+		private String key;
+		private String value;
+		
+		private KeyValue(String key, String value)
+		{
+			this.key = key;
+			this.value = value;
+		}
+	
+		public String getKey() 
+		{
+			return key;
+		}
+	
+		public String getValue() 
+		{
+			return value;
+		}
+	
+		@Override
+		public String toString() 
+		{
+			return key + "=" + value;
+		}
+	}
+
+	/**
 	 * HTTP headers object.
 	 */
 	public static class HTTPHeaders
@@ -794,8 +811,27 @@ public final class HTTPUtils
 			return this;
 		}
 
-	}
+		/**
+		 * Sets a special header: a cookie.
+		 * @param kv the set of key-value pairs to set as a cookie.
+		 * @return this, for chaining.
+		 */
+		public HTTPHeaders setCookie(KeyValue ... kv)
+		{
+			StringBuilder sb = new StringBuilder();
+			for (int i = 0; i < kv.length; i++)
+			{
+				sb.append(kv[i].toString());
+				if (i < kv.length - 1)
+					sb.append("; ");
+			}
+				
+			map.put("Cookie", sb.toString());
+			return this;
+		}
 
+	}
+	
 	/**
 	 * HTTP Parameters object.
 	 */
@@ -977,6 +1013,17 @@ public final class HTTPUtils
 		}
 	}
 
+	/**
+	 * Starts a new {@link HTTPParameters} object.
+	 * @param key the key.
+	 * @param value the value.
+	 * @return a new key-value object.
+	 */
+	public static KeyValue keyValue(String key, String value)
+	{
+		return new KeyValue(key, value);
+	}
+	
 	/**
 	 * Starts a new {@link HTTPHeaders} object.
 	 * @return a new header object.

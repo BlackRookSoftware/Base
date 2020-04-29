@@ -21,13 +21,17 @@ import java.net.ProtocolException;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.nio.charset.Charset;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.TimeZone;
 
 /**
  * HTTP Utilities.
@@ -57,7 +61,13 @@ public final class HTTPUtils
 	private static final String[] VALID_HTTP = new String[]{"http", "https"};
 	private static final byte[] URL_RESERVED = "!#$%&'()*+,/:;=?@[]".getBytes(UTF8);
 	private static final byte[] URL_UNRESERVED = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~".getBytes(UTF8);
-
+	private static final ThreadLocal<SimpleDateFormat> ISO_DATE = ThreadLocal.withInitial(()->
+	{
+		SimpleDateFormat out = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
+		out.setTimeZone(TimeZone.getTimeZone("GMT"));
+		return out;
+	});
+	
 	private static class BlobContent implements HTTPContent
 	{
 		private String contentType;
@@ -745,37 +755,6 @@ public final class HTTPUtils
 	}
 
 	/**
-	 * Key-Value pair.
-	 */
-	public static class KeyValue
-	{
-		private String key;
-		private String value;
-		
-		private KeyValue(String key, String value)
-		{
-			this.key = key;
-			this.value = value;
-		}
-	
-		public String getKey() 
-		{
-			return key;
-		}
-	
-		public String getValue() 
-		{
-			return value;
-		}
-	
-		@Override
-		public String toString() 
-		{
-			return key + "=" + value;
-		}
-	}
-
-	/**
 	 * HTTP headers object.
 	 */
 	public static class HTTPHeaders
@@ -808,25 +787,6 @@ public final class HTTPUtils
 		public HTTPHeaders setHeader(String header, String value)
 		{
 			map.put(header, value);
-			return this;
-		}
-
-		/**
-		 * Sets a special header: a cookie.
-		 * @param kv the set of key-value pairs to set as a cookie.
-		 * @return this, for chaining.
-		 */
-		public HTTPHeaders setCookie(KeyValue ... kv)
-		{
-			StringBuilder sb = new StringBuilder();
-			for (int i = 0; i < kv.length; i++)
-			{
-				sb.append(kv[i].toString());
-				if (i < kv.length - 1)
-					sb.append("; ");
-			}
-				
-			map.put("Cookie", sb.toString());
 			return this;
 		}
 
@@ -1014,14 +974,63 @@ public final class HTTPUtils
 	}
 
 	/**
-	 * Starts a new {@link HTTPParameters} object.
+	 * Makes an HTTP-acceptable ISO date string from a Date.
+	 * @param date the date to format.
+	 * @return the resultant string.
+	 */
+	public static String date(Date date)
+	{
+		return ISO_DATE.get().format(date);
+	}
+	
+	/**
+	 * Makes a comma-space-separated list of values.
+	 * @param values the values to join together.
+	 * @return the resultant string.
+	 */
+	public static String list(String ... values)
+	{
+		return join(", ", values);
+	}
+	
+	/**
+	 * Joins a list of values into one string, placing a joiner between all of them.
+	 * @param joiner the joining string.
+	 * @param values the values to join together.
+	 * @return the resultant string.
+	 */
+	public static String join(String joiner, String ... values)
+	{
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < values.length; i++)
+		{
+			sb.append(values[i]);
+			if (i < values.length - 1)
+				sb.append(joiner);
+		}
+		return sb.toString();
+	}
+	
+	/**
+	 * Makes a "Value; Parameter" string.
+	 * @param value the value.
+	 * @param parameter the value parameter.
+	 * @return a string that is equivalent to: <code>String.valueOf(value) + "; " + String.valueOf(parameter)</code>.
+	 */
+	public static String valueParam(String value, String parameter)
+	{
+		return String.valueOf(value) + "; " + String.valueOf(parameter);
+	}
+	
+	/**
+	 * Makes a "Key=Value" string.
 	 * @param key the key.
 	 * @param value the value.
-	 * @return a new key-value object.
+	 * @return a string that is equivalent to: <code>String.valueOf(key) + '=' + String.valueOf(value)</code>.
 	 */
-	public static KeyValue keyValue(String key, String value)
+	public static String keyValue(String key, String value)
 	{
-		return new KeyValue(key, value);
+		return String.valueOf(key) + '=' + String.valueOf(value);
 	}
 	
 	/**
@@ -1173,6 +1182,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
 	 */
 	public static <R> R httpGet(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1191,6 +1201,8 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpGet(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1224,6 +1236,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpHead(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1241,6 +1254,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
 	 */
 	public static <R> R httpHead(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1259,6 +1273,8 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpHead(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1292,6 +1308,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpDelete(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1309,6 +1326,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
 	 */
 	public static <R> R httpDelete(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1327,6 +1345,8 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpDelete(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1360,6 +1380,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpOptions(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1377,6 +1398,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
 	 */
 	public static <R> R httpOptions(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1395,6 +1417,8 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpOptions(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1428,6 +1452,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpTrace(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1445,6 +1470,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
 	 */
 	public static <R> R httpTrace(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1463,6 +1489,8 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpTrace(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1480,6 +1508,13 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
 	 */
 	public static <R> R httpPut(String url, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1498,6 +1533,14 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
 	 */
 	public static <R> R httpPut(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1515,6 +1558,13 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
 	 */
 	public static <R> R httpPost(String url, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1533,6 +1583,14 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
 	 */
 	public static <R> R httpPost(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1553,12 +1611,20 @@ public final class HTTPUtils
 	 * @return the read content from an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
-	 * @throws ProtocolException if the requestMethod is incorrect.
+	 * @throws ProtocolException if the requestMethod is incorrect, or not an HTTP URL.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
 	 */
 	public static <R> R getHTTPContent(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		if (Arrays.binarySearch(VALID_HTTP, url.getProtocol()) < 0)
-			throw new IOException("This is not an HTTP URL.");
+			throw new ProtocolException("This is not an HTTP URL.");
 	
 		HttpURLConnection conn = (HttpURLConnection)url.openConnection();
 		conn.setReadTimeout(socketTimeoutMillis);

@@ -96,7 +96,7 @@ public final class SQLUtils
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
-	public static long[] getUpdateBatch(Connection connection, String query, Object[][] parameterList) throws SQLException
+	public static int[] getUpdateBatch(Connection connection, String query, Object[][] parameterList) throws SQLException
 	{
 		return getUpdateBatch(connection, query, DEFAULT_BATCH_SIZE, Arrays.asList(parameterList));
 	}
@@ -111,7 +111,7 @@ public final class SQLUtils
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
-	public static long[] getUpdateBatch(Connection connection, String query, int granularity, Object[][] parameterList) throws SQLException
+	public static int[] getUpdateBatch(Connection connection, String query, int granularity, Object[][] parameterList) throws SQLException
 	{
 		return getUpdateBatch(connection, query, granularity, Arrays.asList(parameterList));
 	}
@@ -125,7 +125,7 @@ public final class SQLUtils
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
-	public static long[] getUpdateBatch(Connection connection, String query, Collection<Object[]> parameterList) throws SQLException
+	public static int[] getUpdateBatch(Connection connection, String query, Collection<Object[]> parameterList) throws SQLException
 	{
 		return getUpdateBatch(connection, query, DEFAULT_BATCH_SIZE, parameterList);
 	}
@@ -140,7 +140,7 @@ public final class SQLUtils
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
-	public static long[] getUpdateBatch(Connection connection, String query, int granularity, Collection<Object[]> parameterList) throws SQLException
+	public static int[] getUpdateBatch(Connection connection, String query, int granularity, Collection<Object[]> parameterList) throws SQLException
 	{
 		try (PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS))
 		{
@@ -149,10 +149,72 @@ public final class SQLUtils
 	}
 
 	/**
+	 * Performs a series of update queries on a single statement on a connection and returns the batch result.
+	 * @param connection the connection to create a prepared statement and execute from.
+	 * @param query the query statement to execute.
+	 * @param parameterList the list of parameter sets to pass to the query for each update. 
+	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @throws SQLException if the query cannot be executed or the query causes an error.
+	 * @throws UnsupportedOperationException if not implemented by the driver.
+	 */
+	public static long[] getUpdateLargeBatch(Connection connection, String query, Object[][] parameterList) throws SQLException
+	{
+		return getUpdateLargeBatch(connection, query, DEFAULT_BATCH_SIZE, Arrays.asList(parameterList));
+	}
+
+	/**
+	 * Performs a series of update queries on a single statement on a connection and returns the batch result.
+	 * @param connection the connection to create a prepared statement and execute from.
+	 * @param query the query statement to execute.
+	 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
+	 * @param parameterList the list of parameter sets to pass to the query for each update. 
+	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @throws SQLException if the query cannot be executed or the query causes an error.
+	 * @throws UnsupportedOperationException if not implemented by the driver.
+	 */
+	public static long[] getUpdateLargeBatch(Connection connection, String query, int granularity, Object[][] parameterList) throws SQLException
+	{
+		return getUpdateLargeBatch(connection, query, granularity, Arrays.asList(parameterList));
+	}
+
+	/**
+	 * Performs a series of update queries on a single statement on a connection and returns the batch result.
+	 * @param connection the connection to create a prepared statement and execute from.
+	 * @param query the query statement to execute.
+	 * @param parameterList the list of parameter sets to pass to the query for each update. 
+	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @throws SQLException if the query cannot be executed or the query causes an error.
+	 * @throws UnsupportedOperationException if not implemented by the driver.
+	 */
+	public static long[] getUpdateLargeBatch(Connection connection, String query, Collection<Object[]> parameterList) throws SQLException
+	{
+		return getUpdateLargeBatch(connection, query, DEFAULT_BATCH_SIZE, parameterList);
+	}
+
+	/**
+	 * Performs a series of update queries on a single statement on a connection and returns the batch result.
+	 * @param connection the connection to create a prepared statement and execute from.
+	 * @param query the query statement to execute.
+	 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
+	 * @param parameterList the list of parameter sets to pass to the query for each update. 
+	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @throws SQLException if the query cannot be executed or the query causes an error.
+	 * @throws UnsupportedOperationException if not implemented by the driver.
+	 */
+	public static long[] getUpdateLargeBatch(Connection connection, String query, int granularity, Collection<Object[]> parameterList) throws SQLException
+	{
+		try (PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS))
+		{
+			return callLargeBatch(statement, granularity, parameterList);
+		}
+	}
+
+	/**
 	 * Performs an update query (INSERT, DELETE, UPDATE, or other commands that do not return rows)
 	 * and extracts each set of result data into a {@link Result}.
 	 * <p>This is usually more efficient than multiple calls of {@link #getUpdateResult(Connection, String, Object...)},
-	 * since it uses the same prepared statement. However, it is not as efficient as {@link #getUpdateBatch(Connection, String, int, Collection)},
+	 * since it uses the same prepared statement. However, it is not as efficient as 
+	 * {@link #getUpdateBatch(Connection, String, int, Collection)} or {@link #getUpdateLargeBatch(Connection, String, int, Collection)},
 	 * but for this method, you will get the generated ids in each result, if any.
 	 * @param connection the connection to create a prepared statement and execute from.
 	 * @param query the query statement to execute.
@@ -250,7 +312,50 @@ public final class SQLUtils
 	 * @throws SQLException if a SQL exception occurs.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
-	private static long[] callBatch(PreparedStatement statement, int granularity, Collection<Object[]> parameterList) throws SQLException
+	private static int[] callBatch(PreparedStatement statement, int granularity, Collection<Object[]> parameterList) throws SQLException
+	{
+		int[] out = new int[parameterList.size()];
+		int cursor = 0;
+		int batch = 0;
+	
+		for (Object[] parameters : parameterList)
+		{
+			int n = 1;
+			for (Object obj : parameters)
+				statement.setObject(n++, obj);
+			
+			statement.addBatch();
+			batch++;
+			
+			if (batch == granularity)
+			{
+				int[] execute = statement.executeBatch();
+				System.arraycopy(execute, 0, out, cursor, execute.length);
+				cursor += execute.length;
+				batch = 0;
+			}
+		}
+		
+		if (batch != 0)
+		{
+			int[] execute = statement.executeBatch();
+			System.arraycopy(execute, 0, out, cursor, execute.length);
+		}
+		
+		return out;
+	}
+
+	/**
+	 * Performs a series of update queries on a single statement on a connection and returns the batch result.
+	 * @param statement the statement to execute.
+	 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
+	 * @param parameterList the list of parameter sets to pass to the query for each update. 
+	 * @return the amount of affected rows of each of the updates, each index corresponding to the index of the set of parameters used.
+	 * 		May also return {@link Statement#SUCCESS_NO_INFO} or {@link Statement#EXECUTE_FAILED} per update.
+	 * @throws SQLException if a SQL exception occurs.
+	 * @throws UnsupportedOperationException if not implemented by the driver.
+	 */
+	private static long[] callLargeBatch(PreparedStatement statement, int granularity, Collection<Object[]> parameterList) throws SQLException
 	{
 		long[] out = new long[parameterList.size()];
 		int cursor = 0;

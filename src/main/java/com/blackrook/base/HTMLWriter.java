@@ -28,6 +28,7 @@ public class HTMLWriter implements Flushable, AutoCloseable
 {
 	private static final Attribute[] NO_ATTRIBUTES = new Attribute[0];
 	private static final ThreadLocal<char[]> CHARBUFFER = ThreadLocal.withInitial(()->new char[4096]);
+	private static final ThreadLocal<String[]> SINGLE_STRING = ThreadLocal.withInitial(()->new String[1]);
 	private static final HashMap<Character, String> UNICODE_ENTITY_MAP = new HashMap<Character, String>()
 	{
 		private static final long serialVersionUID = -8209253780919474200L;
@@ -346,6 +347,89 @@ public class HTMLWriter implements Flushable, AutoCloseable
 		out.key = key;
 		out.value = value;
 		return out;
+	}
+
+	/**
+	 * Creates an id attribute.
+	 * @param value the attribute value.
+	 * @return the new attribute.
+	 */
+	public static Attribute id(String value)
+	{
+		return attribute("id", value);
+	}
+
+	/**
+	 * Creates a "class" attribute with a single class.
+	 * @param value the class value.
+	 * @return the new attribute.
+	 */
+	public static Attribute classes(String value)
+	{
+		// work around an unnecessary implicit allocation
+		String[] s = SINGLE_STRING.get();
+		s[0] = value;
+		return classes(s);
+	}
+
+	/**
+	 * Creates a "class" attribute with multiple classes.
+	 * @param values the class list.
+	 * @return the new attribute.
+	 */
+	public static Attribute classes(String ... values)
+	{
+		return attribute("class", join(" ", values));
+	}
+
+	/**
+	 * Creates an "href" attribute.
+	 * @param value the value.
+	 * @return the new attribute.
+	 */
+	public static Attribute href(String value)
+	{
+		return attribute("href", value);
+	}
+
+	/**
+	 * Creates a "src" attribute.
+	 * @param value the value.
+	 * @return the new attribute.
+	 */
+	public static Attribute src(String value)
+	{
+		return attribute("src", value);
+	}
+
+	/**
+	 * Creates a "type" attribute.
+	 * @param value the value.
+	 * @return the new attribute.
+	 */
+	public static Attribute type(String value)
+	{
+		return attribute("type", value);
+	}
+
+	/**
+	 * Creates a "rel" attribute.
+	 * @param value the value.
+	 * @return the new attribute.
+	 */
+	public static Attribute rel(String value)
+	{
+		return attribute("rel", value);
+	}
+
+	/**
+	 * Creates a "name" attribute.
+	 * @param value the value.
+	 * @return the new attribute.
+	 */
+	public static Attribute name(String value)
+	{
+		return attribute("name", value);
 	}
 
 	/**
@@ -719,6 +803,46 @@ public class HTMLWriter implements Flushable, AutoCloseable
 	}
 
 	/**
+	 * Writes a single META tag with name and content attributes.
+	 * @param name the name attribute.
+	 * @param content the content attribute.
+	 * @return this writer.
+	 * @throws IOException if a write error occurs.
+	 * @see #tag(String, Attribute...)
+	 */
+	public HTMLWriter meta(String name, String content) throws IOException
+	{
+		return tag("meta", name(name), attribute("content", content));
+	}
+
+	/**
+	 * Writes a single LINK tag with "stylesheet" relationship and an HREF to the resource.
+	 * @param resourcePath the URI/URL to the style sheet.
+	 * @return this writer.
+	 * @throws IOException if a write error occurs.
+	 * @see #tag(String, Attribute...)
+	 */
+	public HTMLWriter css(String resourcePath) throws IOException
+	{
+		return tag("link", rel("stylesheet"), href(resourcePath));
+	}
+
+	/**
+	 * Writes an empty script element with type "text/javascript" and a "src" path to the script resource.
+	 * If you wish to embed a script, consider using: 
+	 * <p><code>tag("script", new File("script-file.js"), type("text/javascript"))</code>
+	 * @param resourcePath the URI/URL to the script data.
+	 * @return this writer.
+	 * @throws IOException if a write error occurs.
+	 * @see #tag(String, String, Attribute...)
+	 */
+	public HTMLWriter script(String resourcePath) throws IOException
+	{
+		// push-pop since script cannot be a singleton tag.
+		return push("script", type("text/javascript"), src(resourcePath)).pop();
+	}
+
+	/**
 	 * Writes a tag with attributes, and text content.
 	 * @param text the comment data.
 	 * @return this writer.
@@ -779,6 +903,44 @@ public class HTMLWriter implements Flushable, AutoCloseable
 		writePrettyNewline();
 		return this;
 	}
+
+	/**
+	 * Starts an HTML document.
+	 * Convenience method for: <code>doctype("html").push("html")</code>
+	 * @return this writer.
+	 * @throws IOException if a write error occurs.
+	 */
+	public HTMLWriter start() throws IOException
+	{
+		return doctype("html").push("html");
+	}
+	
+	/**
+	 * Starts an HTML document with a different DOCTYPE.
+	 * Convenience method for: <code>doctype(type).push("html")</code>
+	 * @param type the document type.
+	 * @return this writer.
+	 * @throws IOException if a write error occurs.
+	 */
+	public HTMLWriter start(String type) throws IOException
+	{
+		return doctype(type).push("html");
+	}
+	
+	/**
+	 * Pops all pushed tags from the stack and flushes the stream.
+	 * Meant to the paired with {@link #start()} or {@link #start(String)}.
+	 * @return this writer.
+	 * @throws IOException if a write error occurs.
+	 * @see #pop()
+	 */
+	public HTMLWriter end() throws IOException
+	{
+		while (!tagStack.isEmpty())
+			pop();
+		writer.flush();
+		return this;
+	}
 	
 	@Override
 	public void flush() throws IOException
@@ -786,12 +948,13 @@ public class HTMLWriter implements Flushable, AutoCloseable
 		writer.flush();
 	}
 
+	/**
+	 * Calls {@link #end()} and closes the underlying writer.
+	 */
 	@Override
 	public void close() throws IOException
 	{
-		while (!tagStack.isEmpty())
-			pop();
-		writer.flush();
+		end();
 		writer.close();
 	}
 
@@ -876,9 +1039,13 @@ public class HTMLWriter implements Flushable, AutoCloseable
 
 	private void writeAttribute(Attribute attribute) throws IOException 
 	{
-		writer.append(attribute.key).append('=').append('"');
-		writeConverted(attribute.value);
-		writer.append('"');
+		writer.append(attribute.key);
+		if (attribute.value != null)
+		{
+			writer.append('=').append('"');
+			writeConverted(attribute.value);
+			writer.append('"');
+		}
 	}
 	
 	/**

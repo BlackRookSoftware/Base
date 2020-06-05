@@ -183,9 +183,9 @@ public final class HTTPUtils
 
 	private static class FormContent extends TextContent
 	{
-		private FormContent(Map<String, List<String>> map)
+		private FormContent(HTTPParameters parameters)
 		{
-			super("x-www-form-urlencoded", Charset.defaultCharset().displayName(), null, mapToParameterString(map).getBytes());
+			super("x-www-form-urlencoded", Charset.defaultCharset().displayName(), null, parameters.getString().getBytes());
 		}
 	}
 
@@ -862,7 +862,27 @@ public final class HTTPUtils
 				list.add(String.valueOf(v));
 			return this;
 		}
-
+		
+		/**
+		 * @return the parameter string to add to form content or URLs.
+		 */
+		public String getString()
+		{
+			StringBuilder sb = new StringBuilder();
+			for (Map.Entry<String, List<String>> entry : map.entrySet())
+			{
+				String key = entry.getKey();
+				for (String value : entry.getValue())
+				{
+					if (sb.length() > 0)
+						sb.append('&');
+					sb.append(toURLEncoding(key));
+					sb.append('=');
+					sb.append(toURLEncoding(value));
+				}
+			}
+			return sb.toString();
+		}
 	}
 	
 	/**
@@ -1123,7 +1143,7 @@ public final class HTTPUtils
 	 */
 	public static HTTPContent createFormContent(HTTPParameters keyValueMap)
 	{
-		return new FormContent(keyValueMap.map);
+		return new FormContent(keyValueMap);
 	}
 
 	/**
@@ -1723,33 +1743,11 @@ public final class HTTPUtils
 		return sb.toString();
 	}
 	
-	private static String mapToParameterString(Map<String, List<String>> map)
+	private static String urlParams(String url, HTTPParameters params)
 	{
-		StringBuilder sb = new StringBuilder();
-		for (Map.Entry<String, List<String>> entry : map.entrySet())
-		{
-			String key = entry.getKey();
-			for (String value : entry.getValue())
-			{
-				if (sb.length() > 0)
-					sb.append('&');
-				sb.append(toURLEncoding(key));
-				sb.append('=');
-				sb.append(toURLEncoding(value));
-			}
-		}
-		return sb.toString();
+		return url + (url.indexOf('?') >= 0 ? '&' : '?') + params.getString(); 
 	}
 	
-	private static String urlParams(String url, HTTPParameters parameters)
-	{
-		String param = parameters != null ? mapToParameterString(parameters.map) : null;
-		
-		if (param != null && !param.isEmpty())
-			url = url + (url.indexOf('?') >= 0 ? '&' : '?') + param;
-		return url;
-	}
-
 	/**
 	 * Reads from an input stream, reading in a consistent set of data
 	 * and writing it to the output stream. The read/write is buffered

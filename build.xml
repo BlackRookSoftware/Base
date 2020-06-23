@@ -24,6 +24,7 @@
 	<property name="project.testclass.main" value="com.blackrook.base.util.TestUtils"/>
 	<property name="project.javadoc.packages" value="
 		com.blackrook.base,
+		com.blackrook.base.map,
 		com.blackrook.base.trie,
 		com.blackrook.base.util
 		"

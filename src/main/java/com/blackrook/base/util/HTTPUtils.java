@@ -185,7 +185,7 @@ public final class HTTPUtils
 	{
 		private FormContent(HTTPParameters parameters)
 		{
-			super("x-www-form-urlencoded", Charset.defaultCharset().displayName(), null, parameters.getString().getBytes());
+			super("x-www-form-urlencoded", Charset.defaultCharset().displayName(), null, parameters.toString().getBytes());
 		}
 	}
 
@@ -755,11 +755,132 @@ public final class HTTPUtils
 	}
 
 	/**
+	 * HTTP Cookie object.
+	 */
+	public static class HTTPCookie
+	{
+		enum SameSiteMode
+		{
+			STRICT,
+			LAX,
+			NONE;
+		}
+		
+		private String key;
+		private String value;
+		private List<String> flags;
+		
+		private HTTPCookie(String key, String value)
+		{
+			this.key = key;
+			this.value = value;
+			this.flags = new LinkedList<>();
+		}
+		
+		/**
+		 * Sets the cookie expiry date. 
+		 * @param date the expiry date.
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie expires(Date date)
+		{
+			flags.add("Expires" + date(date));
+			return this;
+		}
+		
+		/**
+		 * Sets the cookie expiry date. 
+		 * @param dateMillis the expiry date in milliseconds since the Epoch.
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie expires(long dateMillis)
+		{
+			flags.add("Expires=" + date(dateMillis));
+			return this;
+		}
+		
+		/**
+		 * Sets the cookie maximum age in seconds. 
+		 * @param seconds the time in seconds.
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie maxAge(long seconds)
+		{
+			flags.add("Max-Age=" + seconds);
+			return this;
+		}
+		
+		/**
+		 * Sets the cookie's relevant domain. 
+		 * @param value the domain value.
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie domain(String value)
+		{
+			flags.add("Domain=" + value);
+			return this;
+		}
+		
+		/**
+		 * Sets the cookie's relevant subpath. 
+		 * @param value the path value.
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie path(String value)
+		{
+			flags.add("Path=" + value);
+			return this;
+		}
+
+		/**
+		 * Sets the cookie for only secure travel. 
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie secure()
+		{
+			flags.add("Secure");
+			return this;
+		}
+
+		/**
+		 * Sets the cookie for only top-level HTTP requests (not JS/AJAX). 
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie httpOnly()
+		{
+			flags.add("HttpOnly");
+			return this;
+		}
+
+		/**
+		 * Sets the cookie for only top-level HTTP requests (not JS/AJAX). 
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie sameSite()
+		{
+			flags.add("HttpOnly");
+			return this;
+		}
+
+		/**
+		 * @return the parameter string to add to header values.
+		 */
+		public String toString()
+		{
+			StringBuilder sb = new StringBuilder();
+			sb.append(key).append('=').append(value);
+			for (String flag : flags)
+				sb.append("; ").append(flag);
+			return sb.toString();
+		}
+	}
+	
+	/**
 	 * HTTP headers object.
 	 */
 	public static class HTTPHeaders
 	{
-		Map<String, String> map;
+		private Map<String, String> map;
 		
 		private HTTPHeaders()
 		{
@@ -797,7 +918,7 @@ public final class HTTPUtils
 	 */
 	public static class HTTPParameters
 	{
-		Map<String, List<String>> map;
+		private Map<String, List<String>> map;
 		
 		private HTTPParameters()
 		{
@@ -866,7 +987,7 @@ public final class HTTPUtils
 		/**
 		 * @return the parameter string to add to form content or URLs.
 		 */
-		public String getString()
+		public String toString()
 		{
 			StringBuilder sb = new StringBuilder();
 			for (Map.Entry<String, List<String>> entry : map.entrySet())
@@ -1004,6 +1125,16 @@ public final class HTTPUtils
 	}
 	
 	/**
+	 * Makes an HTTP-acceptable ISO date string from a Date, represented in milliseconds since the Epoch.
+	 * @param dateMillis the millisecond date to format.
+	 * @return the resultant string.
+	 */
+	public static String date(long dateMillis)
+	{
+		return ISO_DATE.get().format(new Date(dateMillis));
+	}
+	
+	/**
 	 * Makes a comma-space-separated list of values.
 	 * @param values the values to join together.
 	 * @return the resultant string.
@@ -1051,6 +1182,15 @@ public final class HTTPUtils
 	public static String keyValue(String key, String value)
 	{
 		return String.valueOf(key) + '=' + String.valueOf(value);
+	}
+	
+	/**
+	 * Starts a new {@link HTTPCookie} object.
+	 * @return a new cookie object.
+	 */
+	public static HTTPCookie cookie(String key, String value)
+	{
+		return new HTTPCookie(key, value);
 	}
 	
 	/**
@@ -1745,7 +1885,7 @@ public final class HTTPUtils
 	
 	private static String urlParams(String url, HTTPParameters params)
 	{
-		return url + (url.indexOf('?') >= 0 ? '&' : '?') + params.getString(); 
+		return url + (url.indexOf('?') >= 0 ? '&' : '?') + params.toString(); 
 	}
 	
 	/**

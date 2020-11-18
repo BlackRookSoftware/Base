@@ -1186,6 +1186,8 @@ public final class HTTPUtils
 	
 	/**
 	 * Starts a new {@link HTTPCookie} object.
+	 * @param key the cookie name.
+	 * @param value the cookie value. 
 	 * @return a new cookie object.
 	 */
 	public static HTTPCookie cookie(String key, String value)

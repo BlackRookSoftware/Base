@@ -404,6 +404,7 @@ public final class AsyncFactory
 	
 	/**
 	 * Attempts to shut down the thread pool.
+	 * @return the list of runnables in the pool.
 	 * @see ThreadPoolExecutor#shutdownNow()
 	 */
 	public List<Runnable> shutDownNow()
@@ -434,6 +435,7 @@ public final class AsyncFactory
 
 	/**
 	 * A listener interface for all instances.
+	 * @param <T> instance return type.
 	 */
 	public static interface InstanceListener<T>
 	{
@@ -883,7 +885,7 @@ public final class AsyncFactory
 		/**
 		 * Executes this instance's callable payload.
 		 * @return the result from the execution.
-		 * @throws Exception for any exception that may occur.
+		 * @throws Throwable for any exception that may occur.
 		 */
 		protected abstract T execute() throws Throwable;
 	

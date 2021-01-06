@@ -6,6 +6,7 @@
  ******************************************************************************/
 package com.blackrook.base.trie;
 
+import java.io.PrintStream;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
@@ -38,17 +39,16 @@ public class URITrie<V>
 	/**
 	 * Adds a path to the trie.
 	 * @param uri the request URI path.
-	 * @param entryPoint the mapped entry point.
+	 * @param value the mapped value.
 	 * @throws ParseException if a path parsing error occurs.
 	 * @throws PatternSyntaxException if a regex expression is invalid in one of the paths.
 	 */
-	public void add(String uri, V entryPoint)
+	public void add(String uri, V value)
 	{
 		final int STATE_START = 0;
 		final int STATE_PATH = 1;
 		final int STATE_VARIABLE = 2;
 		final int STATE_REGEX = 3;
-		final int STATE_VARIABLE_END = 4;
 
 		Node<V> endNode = root;
 		String currentVariable = null;
@@ -66,6 +66,7 @@ public class URITrie<V>
 				switch (state)
 				{
 					case STATE_START:
+					{
 						if (c == '/')
 						{
 							// Do nothing
@@ -77,65 +78,70 @@ public class URITrie<V>
 							sb.append(c);
 							state = STATE_PATH;
 						}
-						break;
+					}
+					break;
 					
 					case STATE_PATH:
+					{
 						if (c == '/')
 						{
 							String token = sb.toString().trim();
 							if (token.equals(DEFAULT_TOKEN))
 								throw new ParseException("Wildcard token must be the last segment.");
-							
-							endNode.edges.add(endNode = Node.createMatchNode(token));
+							endNode = nextAddNode(endNode, Node.createMatchNode(token));
 							sb.delete(0, sb.length());
+							state = STATE_START;
 						}
 						else
 						{
 							sb.append(c);
 						}
-						break;
+					}
+					break;
 					
 					case STATE_VARIABLE:
+					{
 						if (c == ':')
 						{
-							currentVariable = sb.toString();
+							if (sb.length() == 0)
+								throw new ParseException("Path variable in \"" + uri + "\" has a blank variable.");
+
+							currentVariable = sb.toString().trim();
 							sb.delete(0, sb.length());
 							state = STATE_REGEX;
 						}
 						else if (c == '}')
 						{
-							endNode.edges.add(endNode = Node.createVariableNode(sb.toString().trim(), null));
+							if (sb.length() == 0)
+								throw new ParseException("Path variable in \"" + uri + "\" has a blank variable.");
+							endNode = nextAddNode(endNode, Node.createVariableNode(sb.toString().trim(), null));
 							sb.delete(0, sb.length());
-							state = STATE_VARIABLE_END;
+							state = STATE_START;
 						}
 						else
 						{
 							sb.append(c);
 						}
-						break;
+					}
+					break;
 					
 					case STATE_REGEX:
+					{
 						if (c == '}')
 						{
-							endNode.edges.add(endNode = Node.createVariableNode(currentVariable, Pattern.compile(sb.toString().trim())));
+							endNode = nextAddNode(endNode, Node.createVariableNode(currentVariable, sb.toString()));
 							sb.delete(0, sb.length());
-							state = STATE_VARIABLE_END;
+							state = STATE_START;
 						}
 						else
 						{
 							sb.append(c);
 						}
-						break;
+					}
+					break;
 					
-					case STATE_VARIABLE_END:
-						if (c == '/')
-							state = STATE_START;
-						else
-							throw new ParseException("Expected '/' to terminate path segment.");
-						break;
-						
-				}// switch
-			}// for
+				} // switch
+			} // for
 			
 			if (state == STATE_VARIABLE)
 				throw new ParseException("Expected '}' to terminate variable segment.");
@@ -146,15 +152,30 @@ public class URITrie<V>
 			{
 				String token = sb.toString().trim();
 				if (token.equals(DEFAULT_TOKEN))
-					endNode.edges.add(endNode = Node.createDefaultNode());
+					endNode = nextAddNode(endNode, Node.createDefaultNode());
 				else
-					endNode.edges.add(endNode = Node.createMatchNode(token));
+					endNode = nextAddNode(endNode, Node.createMatchNode(token));
 			}
-				
 			
 		}
 		
-		endNode.entryPoint = entryPoint;
+		endNode.value = value;
+	}
+
+	private Node<V> nextAddNode(Node<V> endNode, Node<V> node)
+	{
+		boolean found = false;
+		for (Node<V> edge : endNode.edges)
+		{
+			if (edge.equals(node))
+			{
+				endNode = edge;
+				found = true;
+			}
+		}
+		if (!found)
+			endNode.edges.add(endNode = node);
+		return endNode;
 	}
 	
 	/**
@@ -177,21 +198,35 @@ public class URITrie<V>
 		{
 			String pathPart = pathTokens.poll();
 			TreeSet<Node<V>> edgeList = next.edges;
-			next = null;
-			for (Node<V> edge : edgeList)
+			boolean matched = false;
+			if (!edgeList.isEmpty()) 
 			{
-				if (edge.matches(pathPart))
+				for (Node<V> edge : edgeList)
 				{
-					if (edge.type == NodeType.PATHVARIABLE)
-						out.addVariable(edge.token, pathPart);
-					next = edge;
+					if (edge.matches(pathPart))
+					{
+						if (edge.type == NodeType.PATHVARIABLE)
+							out.addVariable(edge.token, pathPart);
+						next = edge;
+						matched = true;
+						break;
+					}
+				}
+				if (!matched)
+				{
+					if (next.type != NodeType.DEFAULT)
+						next = null;
 					break;
 				}
+			}
+			else
+			{
+				next = null;
 			}
 		}
 		
 		if (next != null)
-			out.value = next.entryPoint;
+			out.value = next.value;
 		
 		return out;
 	}
@@ -204,96 +239,6 @@ public class URITrie<V>
 		DEFAULT;
 	}
 
-	/**
-	 * A single node.
-	 */
-	private static class Node<V> implements Comparable<Node<V>>
-	{
-		NodeType type;
-		String token;
-		Pattern pattern;
-		V entryPoint;
-		TreeSet<Node<V>> edges;
-		
-		private Node(NodeType type, String token, Pattern pattern)
-		{
-			this.type = type;
-			this.token = token;
-			this.pattern = pattern;
-			this.entryPoint = null;
-			this.edges = new TreeSet<>();
-		}
-		
-		static <V> Node<V> createRoot()
-		{
-			return new Node<V>(NodeType.ROOT, null, null);
-		}
-		
-		static <V> Node<V> createMatchNode(String token)
-		{
-			return new Node<V>(NodeType.MATCH, token, null);
-		}
-		
-		static <V> Node<V> createVariableNode(String token, Pattern pattern)
-		{
-			return new Node<V>(NodeType.PATHVARIABLE, token, pattern);
-		}
-
-		static <V> Node<V> createDefaultNode()
-		{
-			return new Node<V>(NodeType.DEFAULT, null, null);
-		}
-
-		@Override
-		public int compareTo(Node<V> n)
-		{
-			return type != n.type 
-					? type.ordinal() - n.type.ordinal() 
-					: !token.equals(n.token) 
-						? token.compareTo(n.token) 
-						: pattern != null 
-							? -1 
-							: 0
-			;
-		}
-		
-		/**
-		 * Tests if this node matches a path part.
-		 * @param pathPart the part of the path to test.
-		 * @return
-		 */
-		private boolean matches(String pathPart)
-		{
-			if (type == NodeType.ROOT || type == NodeType.DEFAULT)
-				return true;
-			else if (type == NodeType.MATCH)
-			{
-				if (!isEmpty(token))
-					return token.equals(pathPart);
-				else if (!isEmpty(pattern))
-					return pattern.matcher(pathPart).matches();
-				else
-					return false;
-			}
-			else if (type == NodeType.PATHVARIABLE)
-			{
-				if (!isEmpty(pattern))
-					return pattern.matcher(pathPart).matches();
-				else
-					return true;
-			}
-			else
-				return false;
-		}
-		
-		@Override
-		public String toString() 
-		{
-			return type.name() + " " + token + (pattern != null ? ":" + pattern.pattern() : "") + " " + entryPoint;
-		}
-		
-	}
-	
 	/**
 	 * Result class after a URITrie search.
 	 * @param <V> the value that this holds.
@@ -357,6 +302,149 @@ public class URITrie<V>
 			super(message);
 		}
 	}
+
+	/**
+	 * A single node.
+	 */
+	private static class Node<V> implements Comparable<Node<V>>
+	{
+		private NodeType type;
+		private String token;
+		private String regex;
+		private Pattern pattern;
+		private V value;
+		
+		private TreeSet<Node<V>> edges;
+		
+		private Node(NodeType type, String token, String regex)
+		{
+			this.type = type;
+			this.token = token;
+			this.regex = regex;
+			this.pattern = regex != null ? Pattern.compile(regex) : null;
+			this.value = null;
+			this.edges = new TreeSet<>();
+		}
+		
+		private static <V> Node<V> createRoot()
+		{
+			return new Node<V>(NodeType.ROOT, null, null);
+		}
+		
+		private static <V> Node<V> createMatchNode(String token)
+		{
+			return new Node<V>(NodeType.MATCH, token, null);
+		}
+		
+		private static <V> Node<V> createVariableNode(String token, String regex)
+		{
+			return new Node<V>(NodeType.PATHVARIABLE, token, regex);
+		}
+
+		private static <V> Node<V> createDefaultNode()
+		{
+			return new Node<V>(NodeType.DEFAULT, null, null);
+		}
+
+		@Override
+		public int compareTo(Node<V> n)
+		{
+			if (type != n.type)
+				return type.ordinal() - n.type.ordinal();
+			
+			if (type == NodeType.MATCH)
+				return token.compareTo(n.token);
+			if (type == NodeType.PATHVARIABLE)
+			{
+				if (regex == null)
+				{
+					if (n.regex == null)
+						return 0;
+					else
+						return 1;
+				}
+				else if (n.regex == null)
+					return -1;
+				
+				if(!regex.equals(n.regex))
+					return regex.compareTo(n.regex);
+				return token.compareTo(n.token);
+			}
+			
+			return 0;
+		}
+		
+		/**
+		 * Tests if this node matches a path part.
+		 * @param pathPart the part of the path to test.
+		 * @return
+		 */
+		private boolean matches(String pathPart)
+		{
+			if (type == NodeType.ROOT || type == NodeType.DEFAULT)
+				return true;
+			else if (type == NodeType.MATCH)
+			{
+				if (!isEmpty(token))
+					return token.equals(pathPart);
+				else if (!isEmpty(pattern))
+					return pattern.matcher(pathPart).matches();
+				else
+					return false;
+			}
+			else if (type == NodeType.PATHVARIABLE)
+			{
+				if (!isEmpty(pattern))
+					return pattern.matcher(pathPart).matches();
+				else
+					return true;
+			}
+			else
+				return false;
+		}
+		
+		@Override
+		@SuppressWarnings("unchecked")
+		public boolean equals(Object obj)
+		{
+			if (obj instanceof Node)
+				return equals((Node<V>)obj);
+			return super.equals(obj);
+		}
+		
+		public boolean equals(Node<V> obj)
+		{
+			if (type != obj.type)
+				return false;
+			if (type == NodeType.MATCH)
+				return token.equals(obj.token);
+			if (type == NodeType.PATHVARIABLE)
+			{
+				if (regex == null)
+					return obj.regex == null;
+				else if (obj.regex == null)
+					return false;
+				else
+					return regex.equalsIgnoreCase(obj.regex);
+			}
+			
+			return true;
+		}
+		
+		public void printTo(PrintStream out, String indent)
+		{
+			out.println(indent + this);
+			for (Node<V> edge : edges)
+				edge.printTo(out, indent + "  ");
+		}
+
+		@Override
+		public String toString() 
+		{
+			return type.name() + " " + (token != null ? token + (regex != null ? ":" + regex : "") + " " : "") + (value != null ? String.valueOf(value) : "");
+		}
+		
+	}
 	
 	private static boolean isEmpty(Object obj)
 	{
@@ -405,6 +493,11 @@ public class URITrie<V>
 		while (i > 0 && str.charAt(i - 1) == '/')
 			i--;
 		return i > 0 ? str.substring(0, i) : str;
+	}
+	
+	public void printTo(PrintStream out)
+	{
+		root.printTo(out, "");
 	}
 	
 }

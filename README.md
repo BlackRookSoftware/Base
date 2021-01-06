@@ -1,15 +1,12 @@
 # Black Rook Base
 
-Copyright (c) 2019 Black Rook Software. All rights reserved.  
+Copyright (c) 2019-2020 Black Rook Software.  
 [https://github.com/BlackRookSoftware/Base](https://github.com/BlackRookSoftware/Base)
 
 ### Required Libraries
 
 NONE
 
-### Required Java Modules
-
-[java.base](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/module-summary.html)  
 
 ### Introduction
 

@@ -21,13 +21,17 @@ import java.net.ProtocolException;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.nio.charset.Charset;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.TimeZone;
 
 /**
  * HTTP Utilities.
@@ -53,24 +57,16 @@ public final class HTTPUtils
 
 	private HTTPUtils() {}
 	
-	private static final Charset UTF8;
-	private static final String[] VALID_HTTP;
-	private static final byte[] URL_RESERVED;
-	private static final byte[] URL_UNRESERVED;
-
-	static
+	private static final Charset UTF8 = Charset.forName("utf-8");
+	private static final String[] VALID_HTTP = new String[]{"http", "https"};
+	private static final byte[] URL_RESERVED = "!#$%&'()*+,/:;=?@[]".getBytes(UTF8);
+	private static final byte[] URL_UNRESERVED = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~".getBytes(UTF8);
+	private static final ThreadLocal<SimpleDateFormat> ISO_DATE = ThreadLocal.withInitial(()->
 	{
-		try {
-			UTF8 = Charset.forName("utf-8");
-			// Keep alphabetical.
-			VALID_HTTP = new String[]{"http", "https"};
-			// must be in this order!
-			URL_RESERVED = "!#$%&'()*+,/:;=?@[]".getBytes("utf-8");
-			URL_UNRESERVED = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~".getBytes("utf-8");
-		} catch (UnsupportedEncodingException e) {
-			throw new RuntimeException("JVM does not support ASCII encoding [INTERNAL ERROR].", e);
-		}
-	}
+		SimpleDateFormat out = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
+		out.setTimeZone(TimeZone.getTimeZone("GMT"));
+		return out;
+	});
 	
 	private static class BlobContent implements HTTPContent
 	{
@@ -187,9 +183,9 @@ public final class HTTPUtils
 
 	private static class FormContent extends TextContent
 	{
-		private FormContent(Map<String, List<String>> map)
+		private FormContent(HTTPParameters parameters)
 		{
-			super("x-www-form-urlencoded", Charset.defaultCharset().displayName(), null, mapToParameterString(map).getBytes());
+			super("x-www-form-urlencoded", Charset.defaultCharset().displayName(), null, parameters.toString().getBytes());
 		}
 	}
 
@@ -759,11 +755,132 @@ public final class HTTPUtils
 	}
 
 	/**
+	 * HTTP Cookie object.
+	 */
+	public static class HTTPCookie
+	{
+		enum SameSiteMode
+		{
+			STRICT,
+			LAX,
+			NONE;
+		}
+		
+		private String key;
+		private String value;
+		private List<String> flags;
+		
+		private HTTPCookie(String key, String value)
+		{
+			this.key = key;
+			this.value = value;
+			this.flags = new LinkedList<>();
+		}
+		
+		/**
+		 * Sets the cookie expiry date. 
+		 * @param date the expiry date.
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie expires(Date date)
+		{
+			flags.add("Expires" + date(date));
+			return this;
+		}
+		
+		/**
+		 * Sets the cookie expiry date. 
+		 * @param dateMillis the expiry date in milliseconds since the Epoch.
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie expires(long dateMillis)
+		{
+			flags.add("Expires=" + date(dateMillis));
+			return this;
+		}
+		
+		/**
+		 * Sets the cookie maximum age in seconds. 
+		 * @param seconds the time in seconds.
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie maxAge(long seconds)
+		{
+			flags.add("Max-Age=" + seconds);
+			return this;
+		}
+		
+		/**
+		 * Sets the cookie's relevant domain. 
+		 * @param value the domain value.
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie domain(String value)
+		{
+			flags.add("Domain=" + value);
+			return this;
+		}
+		
+		/**
+		 * Sets the cookie's relevant subpath. 
+		 * @param value the path value.
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie path(String value)
+		{
+			flags.add("Path=" + value);
+			return this;
+		}
+
+		/**
+		 * Sets the cookie for only secure travel. 
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie secure()
+		{
+			flags.add("Secure");
+			return this;
+		}
+
+		/**
+		 * Sets the cookie for only top-level HTTP requests (not JS/AJAX). 
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie httpOnly()
+		{
+			flags.add("HttpOnly");
+			return this;
+		}
+
+		/**
+		 * Sets the cookie for only top-level HTTP requests (not JS/AJAX). 
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie sameSite()
+		{
+			flags.add("HttpOnly");
+			return this;
+		}
+
+		/**
+		 * @return the parameter string to add to header values.
+		 */
+		public String toString()
+		{
+			StringBuilder sb = new StringBuilder();
+			sb.append(key).append('=').append(value);
+			for (String flag : flags)
+				sb.append("; ").append(flag);
+			return sb.toString();
+		}
+	}
+	
+	/**
 	 * HTTP headers object.
 	 */
 	public static class HTTPHeaders
 	{
-		Map<String, String> map;
+		private Map<String, String> map;
 		
 		private HTTPHeaders()
 		{
@@ -795,13 +912,13 @@ public final class HTTPUtils
 		}
 
 	}
-
+	
 	/**
 	 * HTTP Parameters object.
 	 */
 	public static class HTTPParameters
 	{
-		Map<String, List<String>> map;
+		private Map<String, List<String>> map;
 		
 		private HTTPParameters()
 		{
@@ -866,7 +983,27 @@ public final class HTTPUtils
 				list.add(String.valueOf(v));
 			return this;
 		}
-
+		
+		/**
+		 * @return the parameter string to add to form content or URLs.
+		 */
+		public String toString()
+		{
+			StringBuilder sb = new StringBuilder();
+			for (Map.Entry<String, List<String>> entry : map.entrySet())
+			{
+				String key = entry.getKey();
+				for (String value : entry.getValue())
+				{
+					if (sb.length() > 0)
+						sb.append('&');
+					sb.append(toURLEncoding(key));
+					sb.append('=');
+					sb.append(toURLEncoding(value));
+				}
+			}
+			return sb.toString();
+		}
 	}
 	
 	/**
@@ -978,6 +1115,87 @@ public final class HTTPUtils
 	}
 
 	/**
+	 * Makes an HTTP-acceptable ISO date string from a Date.
+	 * @param date the date to format.
+	 * @return the resultant string.
+	 */
+	public static String date(Date date)
+	{
+		return ISO_DATE.get().format(date);
+	}
+	
+	/**
+	 * Makes an HTTP-acceptable ISO date string from a Date, represented in milliseconds since the Epoch.
+	 * @param dateMillis the millisecond date to format.
+	 * @return the resultant string.
+	 */
+	public static String date(long dateMillis)
+	{
+		return ISO_DATE.get().format(new Date(dateMillis));
+	}
+	
+	/**
+	 * Makes a comma-space-separated list of values.
+	 * @param values the values to join together.
+	 * @return the resultant string.
+	 */
+	public static String list(String ... values)
+	{
+		return join(", ", values);
+	}
+	
+	/**
+	 * Joins a list of values into one string, placing a joiner between all of them.
+	 * @param joiner the joining string.
+	 * @param values the values to join together.
+	 * @return the resultant string.
+	 */
+	public static String join(String joiner, String ... values)
+	{
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < values.length; i++)
+		{
+			sb.append(values[i]);
+			if (i < values.length - 1)
+				sb.append(joiner);
+		}
+		return sb.toString();
+	}
+	
+	/**
+	 * Makes a "Value; Parameter" string.
+	 * @param value the value.
+	 * @param parameter the value parameter.
+	 * @return a string that is equivalent to: <code>String.valueOf(value) + "; " + String.valueOf(parameter)</code>.
+	 */
+	public static String valueParam(String value, String parameter)
+	{
+		return String.valueOf(value) + "; " + String.valueOf(parameter);
+	}
+	
+	/**
+	 * Makes a "Key=Value" string.
+	 * @param key the key.
+	 * @param value the value.
+	 * @return a string that is equivalent to: <code>String.valueOf(key) + '=' + String.valueOf(value)</code>.
+	 */
+	public static String keyValue(String key, String value)
+	{
+		return String.valueOf(key) + '=' + String.valueOf(value);
+	}
+	
+	/**
+	 * Starts a new {@link HTTPCookie} object.
+	 * @param key the cookie name.
+	 * @param value the cookie value. 
+	 * @return a new cookie object.
+	 */
+	public static HTTPCookie cookie(String key, String value)
+	{
+		return new HTTPCookie(key, value);
+	}
+	
+	/**
 	 * Starts a new {@link HTTPHeaders} object.
 	 * @return a new header object.
 	 */
@@ -1067,7 +1285,7 @@ public final class HTTPUtils
 	 */
 	public static HTTPContent createFormContent(HTTPParameters keyValueMap)
 	{
-		return new FormContent(keyValueMap.map);
+		return new FormContent(keyValueMap);
 	}
 
 	/**
@@ -1126,6 +1344,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
 	 */
 	public static <R> R httpGet(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1144,6 +1363,8 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpGet(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1177,6 +1398,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpHead(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1194,6 +1416,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
 	 */
 	public static <R> R httpHead(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1212,6 +1435,8 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpHead(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1245,6 +1470,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpDelete(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1262,6 +1488,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
 	 */
 	public static <R> R httpDelete(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1280,6 +1507,8 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpDelete(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1313,6 +1542,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpOptions(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1330,6 +1560,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
 	 */
 	public static <R> R httpOptions(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1348,6 +1579,8 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpOptions(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1381,6 +1614,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpTrace(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1398,6 +1632,7 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
 	 */
 	public static <R> R httpTrace(String url, HTTPHeaders headers, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1416,6 +1651,8 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
 	 */
 	public static <R> R httpTrace(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1433,6 +1670,13 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
 	 */
 	public static <R> R httpPut(String url, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1451,6 +1695,14 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
 	 */
 	public static <R> R httpPut(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1468,6 +1720,13 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
 	 */
 	public static <R> R httpPost(String url, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1486,6 +1745,14 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
 	 */
 	public static <R> R httpPost(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
@@ -1506,12 +1773,20 @@ public final class HTTPUtils
 	 * @return the read content from an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
-	 * @throws ProtocolException if the requestMethod is incorrect.
+	 * @throws ProtocolException if the requestMethod is incorrect, or not an HTTP URL.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
 	 */
 	public static <R> R getHTTPContent(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		if (Arrays.binarySearch(VALID_HTTP, url.getProtocol()) < 0)
-			throw new IOException("This is not an HTTP URL.");
+			throw new ProtocolException("This is not an HTTP URL.");
 	
 		HttpURLConnection conn = (HttpURLConnection)url.openConnection();
 		conn.setReadTimeout(socketTimeoutMillis);
@@ -1610,33 +1885,11 @@ public final class HTTPUtils
 		return sb.toString();
 	}
 	
-	private static String mapToParameterString(Map<String, List<String>> map)
+	private static String urlParams(String url, HTTPParameters params)
 	{
-		StringBuilder sb = new StringBuilder();
-		for (Map.Entry<String, List<String>> entry : map.entrySet())
-		{
-			String key = entry.getKey();
-			for (String value : entry.getValue())
-			{
-				if (sb.length() > 0)
-					sb.append('&');
-				sb.append(toURLEncoding(key));
-				sb.append('=');
-				sb.append(toURLEncoding(value));
-			}
-		}
-		return sb.toString();
+		return url + (url.indexOf('?') >= 0 ? '&' : '?') + params.toString(); 
 	}
 	
-	private static String urlParams(String url, HTTPParameters parameters)
-	{
-		String param = parameters != null ? mapToParameterString(parameters.map) : null;
-		
-		if (param != null && !param.isEmpty())
-			url = url + (url.indexOf('?') >= 0 ? '&' : '?') + param;
-		return url;
-	}
-
 	/**
 	 * Reads from an input stream, reading in a consistent set of data
 	 * and writing it to the output stream. The read/write is buffered

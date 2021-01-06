@@ -8,6 +8,7 @@ package com.blackrook.base;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
@@ -22,7 +23,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Factory for crateing a thread pool that handles asynchronous tasks.
+ * Factory for creating a thread pool that handles asynchronous tasks.
  * <p>This class uses an internal thread pool to facilitate asynchronous operations. All {@link Instance}s that the
  * "spawn" methods return are handles to the running routine, and are equivalent to {@link Future}s.
  * @author Matthew Tropiano
@@ -240,6 +241,17 @@ public final class AsyncFactory
 	
 	/**
 	 * Spawns a new asynchronous task from a {@link Runnable}.
+	 * @param listener the listener to immediately attach.
+	 * @param runnable the runnable to use.
+	 * @return the new instance.
+	 */
+	public Instance<Void> spawn(InstanceListener<Void> listener, Runnable runnable)
+	{
+		return spawn(listener, (Void)null, runnable);
+	}
+
+	/**
+	 * Spawns a new asynchronous task from a {@link Runnable}.
 	 * @param runnable the runnable to use.
 	 * @return the new instance.
 	 */
@@ -263,6 +275,22 @@ public final class AsyncFactory
 	}
 
 	/**
+	 * Spawns a new asynchronous task from a {@link Runnable}.
+	 * @param <T> the return type for the future.
+	 * @param listener the listener to immediately attach.
+	 * @param result the result to set on completion.
+	 * @param runnable the runnable to use.
+	 * @return the new instance.
+	 */
+	public <T> Instance<T> spawn(InstanceListener<T> listener, T result, Runnable runnable)
+	{
+		Instance<T> out = new RunnableInstance<T>(runnable, result);
+		out.setListener(listener);
+		threadPool.execute(out);
+		return out;
+	}
+
+	/**
 	 * Spawns a new asynchronous task from a {@link Callable}.
 	 * @param <T> the return type for the future.
 	 * @param callable the callable to use.
@@ -271,6 +299,21 @@ public final class AsyncFactory
 	public <T> Instance<T> spawn(Callable<T> callable)
 	{
 		Instance<T> out = new CallableInstance<T>(callable);
+		threadPool.execute(out);
+		return out;
+	}
+
+	/**
+	 * Spawns a new asynchronous task from a {@link Callable}.
+	 * @param <T> the return type for the future.
+	 * @param listener the listener to immediately attach.
+	 * @param callable the callable to use.
+	 * @return the new instance.
+	 */
+	public <T> Instance<T> spawn(InstanceListener<T> listener, Callable<T> callable)
+	{
+		Instance<T> out = new CallableInstance<T>(callable);
+		out.setListener(listener);
 		threadPool.execute(out);
 		return out;
 	}
@@ -289,7 +332,87 @@ public final class AsyncFactory
 		return out;
 	}
 
-	private int relay(InputStream in, OutputStream out) throws IOException
+	/**
+	 * Spawns a new asynchronous task from a {@link Cancellable}.
+	 * <p>Note: {@link Monitorable}s are also Cancellables.
+	 * @param <T> the return type for the future.
+	 * @param listener the listener to immediately attach.
+	 * @param cancellable the cancellable to use.
+	 * @return the new instance.
+	 */
+	public <T> Instance<T> spawn(InstanceListener<T> listener, Cancellable<T> cancellable)
+	{
+		Instance<T> out = new CancellableInstance<T>(cancellable);
+		out.setListener(listener);
+		threadPool.execute(out);
+		return out;
+	}
+
+	/**
+	 * @return the active thread count.
+	 * @see ThreadPoolExecutor#getActiveCount()
+	 */
+	public int getActiveCount()
+	{
+		return threadPool.getActiveCount();
+	}
+	
+	/**
+	 * @return the completed task count.
+	 * @see ThreadPoolExecutor#getCompletedTaskCount()
+	 */
+	public long getCompletedTaskCount()
+	{
+		return threadPool.getCompletedTaskCount();
+	}
+	
+	/**
+	 * @return the task count.
+	 * @see ThreadPoolExecutor#getTaskCount()
+	 */
+	public long getTaskCount()
+	{
+		return threadPool.getTaskCount();
+	}
+	
+	/**
+	 * @return the largest pool size.
+	 * @see ThreadPoolExecutor#getLargestPoolSize()
+	 */
+	public int getLargestPoolSize()
+	{
+		return threadPool.getLargestPoolSize();
+	}
+	
+	/**
+	 * @return the maximum pool size.
+	 * @see ThreadPoolExecutor#getMaximumPoolSize()
+	 */
+	public int getMaximumPoolSize()
+	{
+		return threadPool.getMaximumPoolSize();
+	}
+	
+	/**
+	 * Attempts to shut down the thread pool.
+	 * @see ThreadPoolExecutor#shutdown()
+	 */
+	public void shutDown()
+	{
+		threadPool.shutdown();
+	}
+	
+	/**
+	 * Attempts to shut down the thread pool.
+	 * @return the list of runnables in the pool.
+	 * @see ThreadPoolExecutor#shutdownNow()
+	 */
+	public List<Runnable> shutDownNow()
+	{
+		return threadPool.shutdownNow();
+	}
+	
+	private static int relay(InputStream in, OutputStream out) throws IOException
 	{
 		int total = 0;
 		int buf = 0;
@@ -304,10 +427,31 @@ public final class AsyncFactory
 		return total;
 	}
 
-	private void close(AutoCloseable c)
+	private static void close(AutoCloseable c)
 	{
 		if (c == null) return;
 		try { c.close(); } catch (Exception e){}
+	}
+
+	/**
+	 * A listener interface for all instances.
+	 * @param <T> instance return type.
+	 */
+	public static interface InstanceListener<T>
+	{
+		/**
+		 * Called on Instance start. 
+		 * NOTE: The Instance, is this state, is NOT safe to inspect via blocking methods, and {@link Instance#isDone()} is guaranteed to return false.
+		 * @param instance the instance that this is attached to.
+		 */
+		void onStart(Instance<T> instance);
+
+		/**
+		 * Called on Instance end.
+		 * The Instance is safe to inspect, and {@link Instance#isDone()} is guaranteed to return true.
+		 * @param instance the instance that this is attached to.
+		 */
+		void onEnd(Instance<T> instance);
 	}
 	
 	/**
@@ -522,7 +666,7 @@ public final class AsyncFactory
 		{
 			isCancelled = true;
 		}
-
+		
 		/**
 		 * Checks if this has been flagged for cancellation.
 		 * @return true if so, false if not.
@@ -547,38 +691,73 @@ public final class AsyncFactory
 	public static abstract class Instance<T> implements RunnableFuture<T>
 	{
 		protected Thread executor;
+		
+		private InstanceListener<T> listener;
 
+		// === Locks
 		private Object waitMutex;
+		private Object listenerMutex;
+		
+		// === State
 		private boolean done;
 		private boolean running;
-		private Exception exception;
+		
+		// === Results
+		private Throwable exception;
 		private T finishedResult;
 	
 		private Instance()
 		{
 			this.executor = null;
+			
 			this.waitMutex = new Object();
+			this.listenerMutex = new Object();
+
 			this.done = false;
 			this.running = false;
 			this.exception = null;
 			this.finishedResult = null;
 		}
-	
+		
+		/**
+		 * Sets the instance listener.
+		 * @param listener the listener to set.
+		 */
+		public final void setListener(InstanceListener<T> listener)
+		{
+			synchronized (listenerMutex)
+			{
+				this.listener = listener;
+			}
+		}
+		
 		@Override
-		public void run()
+		public final void run()
 		{
 			executor = Thread.currentThread();
 			running = true;
+			synchronized (listenerMutex)
+			{
+				if (listener != null)
+					listener.onStart(this);
+			}
+			
 			try {
 				finishedResult = execute();
-			} catch (Exception e) {
+			} catch (Throwable e) {
 				exception = e;
 			}
+			
 			running = false;
 			done = true;
 			synchronized (waitMutex)
 			{
 				waitMutex.notifyAll();
+			}
+			synchronized (listenerMutex)
+			{
+				if (listener != null)
+					listener.onEnd(this);
 			}
 			executor = null;
 		}
@@ -587,13 +766,13 @@ public final class AsyncFactory
 		 * Checks if this task instance is being worked on by a thread.
 		 * @return true if so, false if not.
 		 */
-		public boolean isRunning()
+		public final boolean isRunning()
 		{
 			return running;
 		}
 	
 		@Override
-		public boolean isDone()
+		public final boolean isDone()
 		{
 			return done;
 		}
@@ -602,7 +781,7 @@ public final class AsyncFactory
 		 * Makes the calling thread wait indefinitely for this task instance's completion.
 		 * @throws InterruptedException if the current thread was interrupted while waiting.
 		 */
-		public void waitForDone() throws InterruptedException
+		public final void waitForDone() throws InterruptedException
 		{
 			while (!isDone())
 			{
@@ -619,7 +798,7 @@ public final class AsyncFactory
 		 * @param unit the time unit of the timeout argument.
 		 * @throws InterruptedException if the current thread was interrupted while waiting.
 		 */
-		public void waitForDone(long time, TimeUnit unit) throws InterruptedException
+		public final void waitForDone(long time, TimeUnit unit) throws InterruptedException
 		{
 			if (!isDone())
 			{
@@ -634,7 +813,7 @@ public final class AsyncFactory
 		 * Gets the exception thrown as a result of this instance completing, making the calling thread wait for its completion.
 		 * @return the exception thrown by the encapsulated task, or null if no exception.
 		 */
-		public Exception getException()
+		public final Throwable getException()
 		{
 			if (!isDone())
 				join();
@@ -642,7 +821,7 @@ public final class AsyncFactory
 		}
 	
 		@Override
-		public T get() throws InterruptedException, ExecutionException
+		public final T get() throws InterruptedException, ExecutionException
 		{
 			waitForDone();
 			if (isCancelled())
@@ -653,7 +832,7 @@ public final class AsyncFactory
 		}
 	
 		@Override
-		public T get(long time, TimeUnit unit) throws TimeoutException, InterruptedException, ExecutionException
+		public final T get(long time, TimeUnit unit) throws TimeoutException, InterruptedException, ExecutionException
 		{
 			waitForDone(time, unit);
 			if (!isDone())
@@ -672,7 +851,7 @@ public final class AsyncFactory
 		 * @return the result. Can be null if no result is returned.
 		 * @throws RuntimeException if a call to {@link #get()} instead of this would throw an exception.
 		 */
-		public T result()
+		public final T result()
 		{
 			try {
 				return get();
@@ -686,7 +865,7 @@ public final class AsyncFactory
 		 * <p>If {@link #isDone()} is false, this is guaranteed to return <code>null</code>.
 		 * @return the result, or <code>null</code> if not finished.
 		 */
-		public T resultNonBlocking()
+		public final T resultNonBlocking()
 		{
 			return finishedResult;
 		}
@@ -694,7 +873,7 @@ public final class AsyncFactory
 		/**
 		 * Makes the calling thread wait until this task has finished, returning nothing.
 		 */
-		public void join()
+		public final void join()
 		{
 			try {
 				result();
@@ -706,9 +885,9 @@ public final class AsyncFactory
 		/**
 		 * Executes this instance's callable payload.
 		 * @return the result from the execution.
-		 * @throws Exception for any exception that may occur.
+		 * @throws Throwable for any exception that may occur.
 		 */
-		protected abstract T execute() throws Exception;
+		protected abstract T execute() throws Throwable;
 	
 	}
 

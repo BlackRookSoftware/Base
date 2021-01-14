@@ -30,7 +30,7 @@ public class TokenScanner implements AutoCloseable, Iterator<String>
 	
 	/** Source reader. */
 	private Reader reader;
-	/** Next loaded token (from a #hasNext()). */
+	/** Next loaded token (from a {@link #hasNext()} call). */
 	private String heldToken;
 	
 	/**

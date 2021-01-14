@@ -13,6 +13,7 @@ import java.io.StringReader;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
+import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 /**
@@ -23,12 +24,14 @@ import java.util.NoSuchElementException;
  * underlying Reader once you are done scanning.
  * @author Matthew Tropiano
  */
-public class TokenScanner implements AutoCloseable
+public class TokenScanner implements AutoCloseable, Iterator<String>
 {
 	private static final ThreadLocal<StringBuilder> BUILDER = ThreadLocal.withInitial(()->new StringBuilder());
 	
 	/** Source reader. */
 	private Reader reader;
+	/** Next loaded token (from a #hasNext()). */
+	private String heldToken;
 	
 	/**
 	 * Creates a new scanner that reads from a Reader. 
@@ -172,6 +175,18 @@ public class TokenScanner implements AutoCloseable
 		return r;
 	}
 	
+	@Override
+	public boolean hasNext()
+	{
+		return heldToken != null || (heldToken = nextToken()) != null;
+	}
+	
+	@Override
+	public String next()
+	{
+		return nextString();
+	}
+
 	/**
 	 * Reads until a full string is read, and returns it.
 	 * <p> 
@@ -203,6 +218,13 @@ public class TokenScanner implements AutoCloseable
 	 */
 	public String nextToken()
 	{
+		if (heldToken != null)
+		{
+			String out = heldToken;
+			heldToken = null;
+			return out;
+		}
+		
 		final int STATE_START = 0;
 		final int STATE_STRING = 1;
 		final int STATE_QUOTE_DOUBLE = 2;
@@ -299,7 +321,7 @@ public class TokenScanner implements AutoCloseable
 			
 			r = readChar();
 			
-		} while (r < 0 || Character.isWhitespace((char)r));
+		} while (r >= 0 && !Character.isWhitespace((char)r));
 		
 		return sb.toString();
 	}
@@ -525,5 +547,5 @@ public class TokenScanner implements AutoCloseable
 			super(message, cause);
 		}
 	}
-	
+
 }

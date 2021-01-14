@@ -321,7 +321,18 @@ public class TokenScanner implements AutoCloseable, Iterator<String>
 			
 			r = readChar();
 			
-		} while (r >= 0 && !Character.isWhitespace((char)r));
+			if (state == STATE_QUOTE_DOUBLE)
+			{
+				if (r < 0)
+					throw new ParseException("Missing an ending quote.");
+			}
+			else
+			{
+				if (r < 0 || Character.isWhitespace((char)r))
+					break;
+			}
+			
+		} while (true);
 		
 		return sb.toString();
 	}

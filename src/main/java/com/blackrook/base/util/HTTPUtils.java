@@ -30,6 +30,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.TimeZone;
 
@@ -48,8 +49,7 @@ public final class HTTPUtils
 	/** HTTP Method: OPTIONS. */
 	public static final String HTTP_METHOD_OPTIONS = "OPTIONS"; 
 	/** HTTP Method: TRACE. */
-	public static final String HTTP_METHOD_TRACE = "TRACE"; 
-	
+	public static final String HTTP_METHOD_TRACE = "TRACE";
 	/** HTTP Method: POST. */
 	public static final String HTTP_METHOD_POST = "POST";
 	/** HTTP Method: PUT. */
@@ -224,6 +224,7 @@ public final class HTTPUtils
 			
 			return sb.toString();
 		};
+		
 	}
 
 	/**
@@ -1009,7 +1010,7 @@ public final class HTTPUtils
 	/**
 	 * Response from an HTTP call.
 	 */
-	public static class HTTPResponse
+	public static class HTTPResponse implements AutoCloseable
 	{
 		private Map<String, List<String>> headers;
 		private int statusCode;
@@ -1111,6 +1112,19 @@ public final class HTTPUtils
 		public String getFilename() 
 		{
 			return filename;
+		}
+
+		@Override
+		public void close()
+		{
+			if (input != null)
+			{
+				try {
+					input.close();
+				} catch (IOException e) {
+					// Eat exception.
+				}
+			}
 		}
 	}
 
@@ -1368,6 +1382,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpGet(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
+		parameters = parameters == null ? parameters() : parameters;
 		return getHTTPContent(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
@@ -1440,6 +1455,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpHead(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
+		parameters = parameters == null ? parameters() : parameters;
 		return getHTTPContent(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
@@ -1512,6 +1528,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpDelete(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
+		parameters = parameters == null ? parameters() : parameters;
 		return getHTTPContent(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
@@ -1584,6 +1601,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpOptions(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
+		parameters = parameters == null ? parameters() : parameters;
 		return getHTTPContent(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
@@ -1656,6 +1674,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpTrace(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
+		parameters = parameters == null ? parameters() : parameters;
 		return getHTTPContent(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
@@ -1680,7 +1699,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpPut(String url, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpPut(url, null, content, socketTimeoutMillis, reader);
+		return httpPut(url, null, null, content, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -1695,7 +1714,6 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
-	 * @see HTTPHeaders
 	 * @see #createByteContent(String, byte[])
 	 * @see #createByteContent(String, String, byte[])
 	 * @see #createTextContent(String, String)
@@ -1706,7 +1724,61 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpPut(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return getHTTPContent(HTTP_METHOD_PUT, new URL(url), headers, content, null, socketTimeoutMillis, reader);
+		return httpPut(url, headers, null, content, socketTimeoutMillis, reader);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The connection is closed afterward.
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param parameters the optional set of parameters (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R httpPut(String url, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return httpPut(url, null, parameters, content, socketTimeoutMillis, reader);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The connection is closed afterward.
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the optional set of parameters (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R httpPut(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		parameters = parameters == null ? parameters() : parameters;
+		return getHTTPContent(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -1730,7 +1802,7 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpPost(String url, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return httpPost(url, null, content, socketTimeoutMillis, reader);
+		return httpPost(url, null, null, content, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -1745,6 +1817,60 @@ public final class HTTPUtils
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 */
+	public static <R> R httpPost(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return httpPost(url, headers, null, content, socketTimeoutMillis, reader);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The connection is closed afterward.
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the optional set of parameters (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 */
+	public static <R> R httpPost(String url, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return httpPost(url, null, parameters, content, socketTimeoutMillis, reader);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The connection is closed afterward.
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the optional set of parameters (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
 	 * @see HTTPHeaders
 	 * @see #createByteContent(String, byte[])
 	 * @see #createByteContent(String, String, byte[])
@@ -1753,10 +1879,13 @@ public final class HTTPUtils
 	 * @see #createFileContent(String, String, File)
 	 * @see #createFormContent(HTTPParameters)
 	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
 	 */
-	public static <R> R httpPost(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpPost(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		return getHTTPContent(HTTP_METHOD_POST, new URL(url), headers, content, null, socketTimeoutMillis, reader);
+		parameters = parameters == null ? parameters() : parameters;
+		return getHTTPContent(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -1785,6 +1914,9 @@ public final class HTTPUtils
 	 */
 	public static <R> R getHTTPContent(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
+		Objects.requireNonNull(requestMethod, "request method is null");
+		Objects.requireNonNull(reader, "response reader is null");
+		
 		if (Arrays.binarySearch(VALID_HTTP, url.getProtocol()) < 0)
 			throw new ProtocolException("This is not an HTTP URL.");
 	

@@ -183,7 +183,7 @@ public final class HTTP1
 					{
 						chars.append(c);
 						try {
-							bos.write(Integer.parseInt(chars, 0, 2, 16));
+							bos.write(Integer.parseInt(chars.toString(), 16));
 						} catch (NumberFormatException e) {
 							bos.write('%');
 							bos.write(chars.charAt(0));

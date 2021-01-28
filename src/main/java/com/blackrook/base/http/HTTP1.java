@@ -782,7 +782,7 @@ public final class HTTP1
 			/**
 			 * The RequestHeader object returned when a malformed HTTP request header is read.
 			 */
-			public static final RequestHeader MALFORMED = apply(new RequestHeader(), (h)->
+			public static final RequestHeader MALFORMED = apply(new RequestHeader(), (h) ->
 			{
 				h.method = MALFORMED_NAME;
 				h.uri = null;
@@ -841,7 +841,7 @@ public final class HTTP1
 			/**
 			 * The RequestHeader object returned when a malformed HTTP request header is read.
 			 */
-			public static final ResponseHeader MALFORMED = apply(new ResponseHeader(), (h)->
+			public static final ResponseHeader MALFORMED = apply(new ResponseHeader(), (h) ->
 			{
 				h.statusDescription = MALFORMED_NAME;
 				h.version = null;
@@ -900,7 +900,7 @@ public final class HTTP1
 			/**
 			 * The Header object returned when a malformed HTTP header is read.
 			 */
-			public static final Header MALFORMED = apply(new Header(),(h)->
+			public static final Header MALFORMED = apply(new Header(),(h) ->
 			{
 				h.name = MALFORMED_NAME;
 				h.value = null;

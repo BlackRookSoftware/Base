@@ -5,7 +5,6 @@
  ******************************************************************************/
 package com.blackrook.base.util;
 
-import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -40,6 +39,9 @@ import java.util.TimeZone;
  */
 public final class HTTPUtils
 {
+	/** Default timeout in milliseconds. */
+	public static int DEFAULT_TIMEOUT_MILLIS = 5000; 
+	
 	/** HTTP Method: GET. */
 	public static final String HTTP_METHOD_GET = "GET"; 
 	/** HTTP Method: HEAD. */
@@ -55,6 +57,10 @@ public final class HTTPUtils
 	/** HTTP Method: PUT. */
 	public static final String HTTP_METHOD_PUT = "PUT";
 
+	/** No parameters. */
+	private static final HTTPParameters NO_PARAMETERS = parameters();
+
+	
 	private HTTPUtils() {}
 	
 	private static final Charset UTF8 = Charset.forName("utf-8");
@@ -216,7 +222,7 @@ public final class HTTPUtils
 			
 			char[] c = new char[16384];
 			StringBuilder sb = new StringBuilder();
-			InputStreamReader reader = new InputStreamReader(response.getInputStream(), charset);
+			InputStreamReader reader = new InputStreamReader(response.getContentStream(), charset);
 	
 			int buf = 0;
 			while ((buf = reader.read(c)) >= 0) 
@@ -760,7 +766,7 @@ public final class HTTPUtils
 	 */
 	public static class HTTPCookie
 	{
-		enum SameSiteMode
+		public enum SameSiteMode
 		{
 			STRICT,
 			LAX,
@@ -785,7 +791,7 @@ public final class HTTPUtils
 		 */
 		public HTTPCookie expires(Date date)
 		{
-			flags.add("Expires" + date(date));
+			flags.add("Expires=" + date(date));
 			return this;
 		}
 		
@@ -854,12 +860,13 @@ public final class HTTPUtils
 		}
 
 		/**
-		 * Sets the cookie for only top-level HTTP requests (not JS/AJAX). 
+		 * Sets the cookie for a Same Site type. 
+		 * @param mode the SameSite mode.
 		 * @return this, for chaining.
 		 */
-		public HTTPCookie sameSite()
+		public HTTPCookie sameSite(SameSiteMode mode)
 		{
-			flags.add("HttpOnly");
+			flags.add("SameSite=" + mode.name().charAt(0) + mode.name().substring(1).toLowerCase());
 			return this;
 		}
 
@@ -1016,7 +1023,7 @@ public final class HTTPUtils
 		private int statusCode;
 		private String statusMessage;
 		private int length;
-		private InputStream input;
+		private InputStream contentStream;
 		private String charset;
 		private String contentType;
 		private String contentTypeHeader;
@@ -1032,6 +1039,39 @@ public final class HTTPUtils
 		public Map<String, List<String>> getHeaders()
 		{
 			return headers;
+		}
+		
+		/**
+		 * @return true if and only if the response status code is between 100 and 199, inclusive, false otherwise.
+		 */
+		public boolean isInformational()
+		{
+			return statusCode / 100 == 1;
+		}
+		
+		/**
+		 * @return true if and only if the response status code is between 200 and 299, inclusive, false otherwise.
+		 */
+		public boolean isSuccess()
+		{
+			return statusCode / 100 == 2;
+		}
+		
+		/**
+		 * @return true if and only if the response status code is between 300 and 399, inclusive, false otherwise.
+		 */
+		public boolean isRedirect()
+		{
+			return statusCode / 100 == 3;
+		}
+		
+		/**
+		 * @return true if and only if the response status code is between 400 and 599, inclusive, false otherwise.
+		 */
+		public boolean isError()
+		{
+			int range = statusCode / 100;
+			return range == 4 || range == 5;
 		}
 		
 		/**
@@ -1061,9 +1101,9 @@ public final class HTTPUtils
 		/**
 		 * @return an open input stream for reading the response's content.
 		 */
-		public InputStream getInputStream() 
+		public InputStream getContentStream() 
 		{
-			return input;
+			return contentStream;
 		}
 		
 		/**
@@ -1117,14 +1157,7 @@ public final class HTTPUtils
 		@Override
 		public void close()
 		{
-			if (input != null)
-			{
-				try {
-					input.close();
-				} catch (IOException e) {
-					// Eat exception.
-				}
-			}
+			HTTPUtils.close(contentStream);
 		}
 	}
 
@@ -1315,7 +1348,140 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a GET request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpGet(url))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static HTTPResponse httpGet(String url) throws IOException
+	{
+		return httpGet(url, null, null, DEFAULT_TIMEOUT_MILLIS);
+	}
+
+	/**
+	 * Sends a GET request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpGet(url, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static HTTPResponse httpGet(String url, int socketTimeoutMillis) throws IOException
+	{
+		return httpGet(url, null, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a GET request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpGet(url, headers, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 */
+	public static HTTPResponse httpGet(String url, HTTPHeaders headers, int socketTimeoutMillis) throws IOException
+	{
+		return httpGet(url, headers, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a GET request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpGet(url, parameters, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpGet(String url, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
+	{
+		return httpGet(url, null, parameters, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a GET request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpGet(url, headers, parameters, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpGet(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
+	{
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
+		return getHTTPContent(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a GET request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static <R> R httpGet(String url, HTTPReader<R> reader) throws IOException
+	{
+		return httpGet(url, null, null, DEFAULT_TIMEOUT_MILLIS, reader);
+	}
+
+	/**
+	 * Sends a GET request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
@@ -1331,25 +1497,7 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a GET request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param parameters the mapping of key to values representing parameters to append as a query string to the URL (can be null).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 * @see HTTPParameters
-	 */
-	public static <R> R httpGet(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpGet(url, null, parameters, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a GET request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1367,7 +1515,25 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a GET request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param parameters the mapping of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 */
+	public static <R> R httpGet(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return httpGet(url, null, parameters, socketTimeoutMillis, reader);
+	}
+
+	/**
+	 * Sends a GET request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1382,13 +1548,146 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpGet(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		parameters = parameters == null ? parameters() : parameters;
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
 		return getHTTPContent(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
 	 * Sends a HEAD request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpHead(url))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static HTTPResponse httpHead(String url) throws IOException
+	{
+		return httpHead(url, null, null, DEFAULT_TIMEOUT_MILLIS);	
+	}
+
+	/**
+	 * Sends a HEAD request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpHead(url, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static HTTPResponse httpHead(String url, int socketTimeoutMillis) throws IOException
+	{
+		return httpHead(url, null, null, socketTimeoutMillis);	
+	}
+
+	/**
+	 * Sends a HEAD request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpHead(url, headers, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 */
+	public static HTTPResponse httpHead(String url, HTTPHeaders headers, int socketTimeoutMillis) throws IOException
+	{
+		return httpHead(url, headers, null, socketTimeoutMillis);	
+	}
+
+	/**
+	 * Sends a HEAD request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpHead(url, parameters, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpHead(String url, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
+	{
+		return httpHead(url, null, parameters, socketTimeoutMillis);	
+	}
+
+	/**
+	 * Sends a HEAD request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpHead(url, headers, parameters, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpHead(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
+	{
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
+		return getHTTPContent(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a HEAD request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static <R> R httpHead(String url, HTTPReader<R> reader) throws IOException
+	{
+		return httpHead(url, null, null, DEFAULT_TIMEOUT_MILLIS, reader);
+	}
+
+	/**
+	 * Sends a HEAD request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
@@ -1404,25 +1703,7 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a HEAD request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 * @see HTTPParameters
-	 */
-	public static <R> R httpHead(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpHead(url, null, parameters, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a HEAD request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1440,7 +1721,25 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a HEAD request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 */
+	public static <R> R httpHead(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return httpHead(url, null, parameters, socketTimeoutMillis, reader);
+	}
+
+	/**
+	 * Sends a HEAD request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1455,13 +1754,146 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpHead(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		parameters = parameters == null ? parameters() : parameters;
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
 		return getHTTPContent(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
 	 * Sends a DELETE request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpDelete(url))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static HTTPResponse httpDelete(String url) throws IOException
+	{
+		return httpDelete(url, null, null, DEFAULT_TIMEOUT_MILLIS);
+	}
+
+	/**
+	 * Sends a DELETE request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpDelete(url, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static HTTPResponse httpDelete(String url, int socketTimeoutMillis) throws IOException
+	{
+		return httpDelete(url, null, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a DELETE request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpDelete(url, headers, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 */
+	public static HTTPResponse httpDelete(String url, HTTPHeaders headers, int socketTimeoutMillis) throws IOException
+	{
+		return httpDelete(url, headers, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a DELETE request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpDelete(url, parameters, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpDelete(String url, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
+	{
+		return httpDelete(url, null, parameters, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a DELETE request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpDelete(url, headers, parameters, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpDelete(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
+	{
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
+		return getHTTPContent(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a DELETE request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static <R> R httpDelete(String url, HTTPReader<R> reader) throws IOException
+	{
+		return httpDelete(url, null, null, DEFAULT_TIMEOUT_MILLIS, reader);
+	}
+
+	/**
+	 * Sends a DELETE request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
@@ -1477,25 +1909,7 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a DELETE request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 * @see HTTPParameters
-	 */
-	public static <R> R httpDelete(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpDelete(url, null, parameters, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends a DELETE request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1513,7 +1927,25 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a DELETE request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 */
+	public static <R> R httpDelete(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return httpDelete(url, null, parameters, socketTimeoutMillis, reader);
+	}
+
+	/**
+	 * Sends a DELETE request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1528,13 +1960,146 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpDelete(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		parameters = parameters == null ? parameters() : parameters;
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
 		return getHTTPContent(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
 	 * Sends an OPTIONS request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpOptions(url))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static HTTPResponse httpOptions(String url) throws IOException
+	{
+		return httpOptions(url, null, null, DEFAULT_TIMEOUT_MILLIS);
+	}
+
+	/**
+	 * Sends an OPTIONS request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpOptions(url, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static HTTPResponse httpOptions(String url, int socketTimeoutMillis) throws IOException
+	{
+		return httpOptions(url, null, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends an OPTIONS request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpOptions(url, headers, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 */
+	public static HTTPResponse httpOptions(String url, HTTPHeaders headers, int socketTimeoutMillis) throws IOException
+	{
+		return httpOptions(url, headers, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends an OPTIONS request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpOptions(url, parameters, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpOptions(String url, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
+	{
+		return httpOptions(url, null, parameters, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends an OPTIONS request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpOptions(url, headers, parameters, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpOptions(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
+	{
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
+		return getHTTPContent(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends an OPTIONS request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static <R> R httpOptions(String url, HTTPReader<R> reader) throws IOException
+	{
+		return httpOptions(url, null, null, DEFAULT_TIMEOUT_MILLIS, reader);
+	}
+
+	/**
+	 * Sends an OPTIONS request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
@@ -1550,25 +2115,7 @@ public final class HTTPUtils
 
 	/**
 	 * Sends an OPTIONS request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 * @see HTTPParameters
-	 */
-	public static <R> R httpOptions(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpOptions(url, null, parameters, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends an OPTIONS request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1586,7 +2133,25 @@ public final class HTTPUtils
 
 	/**
 	 * Sends an OPTIONS request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 */
+	public static <R> R httpOptions(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return httpOptions(url, null, parameters, socketTimeoutMillis, reader);
+	}
+
+	/**
+	 * Sends an OPTIONS request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1601,13 +2166,148 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpOptions(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		parameters = parameters == null ? parameters() : parameters;
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
 		return getHTTPContent(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
 	 * Sends an TRACE request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpTrace(url))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static HTTPResponse httpTrace(String url) throws IOException
+	{
+		return httpTrace(url, null, null, DEFAULT_TIMEOUT_MILLIS);
+	}
+
+	/**
+	 * Sends an TRACE request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpTrace(url, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static HTTPResponse httpTrace(String url, int socketTimeoutMillis) throws IOException
+	{
+		return httpTrace(url, null, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends an TRACE request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpTrace(url, headers, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 */
+	public static HTTPResponse httpTrace(String url, HTTPHeaders headers, int socketTimeoutMillis) throws IOException
+	{
+		return httpTrace(url, headers, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends an TRACE request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpTrace(url, parameters, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpTrace(String url, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
+	{
+		return httpTrace(url, null, parameters, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends an TRACE request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPut(url, headers, parameters, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpTrace(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
+	{
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
+		return getHTTPContent(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends an TRACE request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 */
+	public static <R> R httpTrace(String url, HTTPReader<R> reader) throws IOException
+	{
+		return httpTrace(url, null, null, DEFAULT_TIMEOUT_MILLIS, reader);
+	}
+
+	/**
+	 * Sends an TRACE request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
@@ -1623,25 +2323,7 @@ public final class HTTPUtils
 
 	/**
 	 * Sends an TRACE request to an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
-	 * @param url the URL to open and read.
-	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the content from opening an HTTP request.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 * @see HTTPParameters
-	 */
-	public static <R> R httpTrace(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
-	{
-		return httpTrace(url, null, parameters, socketTimeoutMillis, reader);
-	}
-
-	/**
-	 * Sends an TRACE request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1659,7 +2341,25 @@ public final class HTTPUtils
 
 	/**
 	 * Sends an TRACE request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param parameters the map of key to values representing parameters to append as a query string to the URL (can be null).
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 */
+	public static <R> R httpTrace(String url, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		return httpTrace(url, null, parameters, socketTimeoutMillis, reader);
+	}
+
+	/**
+	 * Sends an TRACE request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1674,13 +2374,194 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpTrace(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		parameters = parameters == null ? parameters() : parameters;
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
 		return getHTTPContent(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
 	 * Sends a PUT request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPut(url, content))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static HTTPResponse httpPut(String url, HTTPContent content) throws IOException
+	{
+		return httpPut(url, null, null, content, DEFAULT_TIMEOUT_MILLIS);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPut(url, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static HTTPResponse httpPut(String url, HTTPContent content, int socketTimeoutMillis) throws IOException
+	{
+		return httpPut(url, null, null, content, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPut(url, headers, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static HTTPResponse httpPut(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis) throws IOException
+	{
+		return httpPut(url, headers, null, content, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPut(url, parameters, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static HTTPResponse httpPut(String url, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis) throws IOException
+	{
+		return httpPut(url, null, parameters, content, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPut(url, headers, parameters, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static HTTPResponse httpPut(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis) throws IOException
+	{
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
+		return getHTTPContent(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R httpPut(String url, HTTPContent content, HTTPReader<R> reader) throws IOException
+	{
+		return httpPut(url, null, null, content, DEFAULT_TIMEOUT_MILLIS, reader);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
@@ -1704,7 +2585,7 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a PUT request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1729,10 +2610,10 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a PUT request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
-	 * @param parameters the optional set of parameters (can be null for no parameters).
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
 	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
@@ -1754,11 +2635,11 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a PUT request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param parameters the optional set of parameters (can be null for no parameters).
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
 	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
@@ -1777,13 +2658,205 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpPut(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		parameters = parameters == null ? parameters() : parameters;
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
 		return getHTTPContent(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, reader);
 	}
 
 	/**
 	 * Sends a POST request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPost(url, content))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpPost(String url, HTTPContent content) throws IOException
+	{
+		return httpPost(url, null, null, content, DEFAULT_TIMEOUT_MILLIS);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPost(url, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpPost(String url, HTTPContent content, int socketTimeoutMillis) throws IOException
+	{
+		return httpPost(url, null, null, content, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPost(url, headers, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpPost(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis) throws IOException
+	{
+		return httpPost(url, headers, null, content, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPost(url, parameters, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpPost(String url, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis) throws IOException
+	{
+		return httpPost(url, null, parameters, content, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPost(url, headers, parameters, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpPost(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis) throws IOException
+	{
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
+		return getHTTPContent(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R httpPost(String url, HTTPContent content, HTTPReader<R> reader) throws IOException
+	{
+		return httpPost(url, null, null, content, DEFAULT_TIMEOUT_MILLIS, reader);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
@@ -1807,7 +2880,7 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a POST request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
@@ -1833,11 +2906,11 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a POST request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param parameters the optional set of parameters (can be null for no parameters).
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
 	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
@@ -1860,11 +2933,11 @@ public final class HTTPUtils
 
 	/**
 	 * Sends a POST request to an HTTP URL.
-	 * The connection is closed afterward.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
-	 * @param parameters the optional set of parameters (can be null for no parameters).
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
 	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
@@ -1884,22 +2957,28 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpPost(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		parameters = parameters == null ? parameters() : parameters;
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
 		return getHTTPContent(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, reader);
 	}
 
 	/**
 	 * Gets the content from a opening an HTTP URL.
-	 * The connection is closed afterward.
-	 * @param <R> the return type.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = getHTTPContent(requestMethod, url, headers, content, defaultResponseCharset, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
 	 * @param requestMethod the request method.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).
 	 * @param content if not null, add this content to the body.
 	 * @param defaultResponseCharset if the response charset is not specified, use this one.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the read content from an HTTP request.
+	 * @return the response from an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 * @throws ProtocolException if the requestMethod is incorrect, or not an HTTP URL.
@@ -1912,10 +2991,9 @@ public final class HTTPUtils
 	 * @see #createFormContent(HTTPParameters)
 	 * @see #createMultipartContent()
 	 */
-	public static <R> R getHTTPContent(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static HTTPResponse getHTTPContent(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis) throws IOException
 	{
 		Objects.requireNonNull(requestMethod, "request method is null");
-		Objects.requireNonNull(reader, "response reader is null");
 		
 		if (Arrays.binarySearch(VALID_HTTP, url.getProtocol()) < 0)
 			throw new ProtocolException("This is not an HTTP URL.");
@@ -1985,12 +3063,48 @@ public final class HTTPUtils
 			}
 		}
 		
-		response.input = new BufferedInputStream(conn.getInputStream());
-		R out = reader.onHTTPResponse(response);
-		response.input.close();
-		return out;
+		if (response.statusCode >= 400) 
+			response.contentStream = conn.getErrorStream();
+		else 
+			response.contentStream = conn.getInputStream();
+		
+		return response;
 	}
 	
+	/**
+	 * Gets the content from a opening an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param requestMethod the request method.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param content if not null, add this content to the body.
+	 * @param defaultResponseCharset if the response charset is not specified, use this one.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the read content from an HTTP request, via the provided reader.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @throws ProtocolException if the requestMethod is incorrect, or not an HTTP URL.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R getHTTPContent(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	{
+		Objects.requireNonNull(reader, "response reader is null");
+		R out;
+		try (HTTPResponse response = getHTTPContent(requestMethod, url, headers, content, defaultResponseCharset, socketTimeoutMillis))
+		{
+			out = reader.onHTTPResponse(response);
+		}
+		return out;
+	}
+
 	private static final char[] HEX_NYBBLE = "0123456789ABCDEF".toCharArray();
 
 	private static void writePercentChar(StringBuilder target, byte b)
@@ -2019,7 +3133,7 @@ public final class HTTPUtils
 	
 	private static String urlParams(String url, HTTPParameters params)
 	{
-		return url + (url.indexOf('?') >= 0 ? '&' : '?') + params.toString(); 
+		return url + (params.map.isEmpty() ? "" : (url.indexOf('?') >= 0 ? '&' : '?') + params.toString()); 
 	}
 	
 	/**
@@ -2073,4 +3187,15 @@ public final class HTTPUtils
 		return total;
 	}
 	
+	/**
+	 * Attempts to close an {@link AutoCloseable} object.
+	 * If the object is null, this does nothing.
+	 * @param c the reference to the AutoCloseable object.
+	 */
+	private static void close(AutoCloseable c)
+	{
+		if (c == null) return;
+		try { c.close(); } catch (Exception e){}
+	}
+
 }

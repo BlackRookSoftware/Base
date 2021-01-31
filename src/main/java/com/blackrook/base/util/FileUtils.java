@@ -29,6 +29,11 @@ public final class FileUtils
 	private FileUtils() {}
 
 	/**
+	 * The null file stream.
+	 */
+	public static final File NULL_FILE = new File(System.getProperty("os.name").startsWith("Windows") ? "NUL" : "/dev/null");
+	
+	/**
 	 * Creates a blank file or updates its last modified date.
 	 * @param filePath	the abstract path to use.
 	 * @return true if the file was made/updated, false otherwise.

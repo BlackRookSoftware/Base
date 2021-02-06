@@ -2182,7 +2182,6 @@ public final class HTTPUtils
 	 * }
 	 * </code></pre>
 	 * @param url the URL to open and read.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @return the response from an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
@@ -2294,7 +2293,6 @@ public final class HTTPUtils
 	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
-	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the content from opening an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
@@ -2909,7 +2907,6 @@ public final class HTTPUtils
 	 * The stream is closed afterward (but not the connection, which may be pooled).
 	 * @param <R> the return type.
 	 * @param url the URL to open and read.
-	 * @param headers a map of header to header value to add to the request (can be null for no headers).
 	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
 	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.

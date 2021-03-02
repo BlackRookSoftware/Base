@@ -231,6 +231,17 @@ public final class HTTPUtils
 			return sb.toString();
 		};
 		
+		/**
+		 * An HTTP Reader that reads byte content and returns a decoded String.
+		 * Gets the string contents of the response, decoded using the response's charset.
+		 */
+		static HTTPReader<byte[]> BYTE_CONTENT_READER = (response) ->
+		{
+			ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			relay(response.getContentStream(), bos);
+			return bos.toByteArray();
+		};
+		
 	}
 
 	/**
@@ -1461,7 +1472,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpGet(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
 	}
 
 	/**
@@ -1549,7 +1560,7 @@ public final class HTTPUtils
 	public static <R> R httpGet(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -1667,7 +1678,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpHead(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
 	}
 
 	/**
@@ -1755,7 +1766,7 @@ public final class HTTPUtils
 	public static <R> R httpHead(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -1873,7 +1884,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpDelete(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
 	}
 
 	/**
@@ -1961,7 +1972,7 @@ public final class HTTPUtils
 	public static <R> R httpDelete(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -2079,7 +2090,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpOptions(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
 	}
 
 	/**
@@ -2167,7 +2178,7 @@ public final class HTTPUtils
 	public static <R> R httpOptions(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -2285,7 +2296,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpTrace(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
 	}
 
 	/**
@@ -2373,7 +2384,7 @@ public final class HTTPUtils
 	public static <R> R httpTrace(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -2531,7 +2542,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpPut(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis);
 	}
 
 	/**
@@ -2657,7 +2668,7 @@ public final class HTTPUtils
 	public static <R> R httpPut(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -2826,7 +2837,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpPost(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis);
 	}
 
 	/**
@@ -2955,7 +2966,7 @@ public final class HTTPUtils
 	public static <R> R httpPost(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return getHTTPContent(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, reader);
 	}
 
 	/**
@@ -2988,7 +2999,7 @@ public final class HTTPUtils
 	 * @see #createFormContent(HTTPParameters)
 	 * @see #createMultipartContent()
 	 */
-	public static HTTPResponse getHTTPContent(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis) throws IOException
+	public static HTTPResponse httpFetch(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis) throws IOException
 	{
 		Objects.requireNonNull(requestMethod, "request method is null");
 		
@@ -3092,15 +3103,12 @@ public final class HTTPUtils
 	 * @see #createFormContent(HTTPParameters)
 	 * @see #createMultipartContent()
 	 */
-	public static <R> R getHTTPContent(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpFetch(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
-		Objects.requireNonNull(reader, "response reader is null");
-		R out;
-		try (HTTPResponse response = getHTTPContent(requestMethod, url, headers, content, defaultResponseCharset, socketTimeoutMillis))
+		try (HTTPResponse response = httpFetch(requestMethod, url, headers, content, defaultResponseCharset, socketTimeoutMillis))
 		{
-			out = reader.onHTTPResponse(response);
+			return reader.onHTTPResponse(response);
 		}
-		return out;
 	}
 
 	private static final char[] HEX_NYBBLE = "0123456789ABCDEF".toCharArray();
@@ -3134,6 +3142,24 @@ public final class HTTPUtils
 		return url + (params.map.isEmpty() ? "" : (url.indexOf('?') >= 0 ? '&' : '?') + params.toString()); 
 	}
 	
+	/**
+	 * Reads from an input stream, reading in a consistent set of data
+	 * and writing it to the output stream. The read/write is buffered
+	 * so that it does not bog down the OS's other I/O requests.
+	 * This method finishes when the end of the source stream is reached.
+	 * Note that this may block if the input stream is a type of stream
+	 * that will block if the input stream blocks for additional input.
+	 * This method is thread-safe.
+	 * @param in the input stream to grab data from.
+	 * @param bufferSize the buffer size for the I/O. Must be &gt; 0.
+	 * @return the total amount of bytes relayed.
+	 * @throws IOException if a read or write error occurs.
+	 */
+	private static int relay(InputStream in, OutputStream out) throws IOException
+	{
+		return relay(in, out, 8192, -1);
+	}
+
 	/**
 	 * Reads from an input stream, reading in a consistent set of data
 	 * and writing it to the output stream. The read/write is buffered

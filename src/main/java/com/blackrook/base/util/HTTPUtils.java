@@ -3071,6 +3071,7 @@ public final class HTTPUtils
 	/**
 	 * Gets the content from a opening an HTTP URL.
 	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the resultant value read from the response.
 	 * @param requestMethod the request method.
 	 * @param url the URL to open and read.
 	 * @param headers a map of header to header value to add to the request (can be null for no headers).

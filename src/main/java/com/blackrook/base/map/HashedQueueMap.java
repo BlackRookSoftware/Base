@@ -18,8 +18,10 @@ import java.util.LinkedList;
  * not added objects. The method {@link #get(Object)} returns the queue associated with
  * the key.
  * @author Matthew Tropiano
+ * @param <K> the key type.
+ * @param <V> the value type.
  */
-public class HashedQueueMap<K extends Object, V extends Object> extends HashMap<K, Deque<V>>
+public class HashedQueueMap<K, V> extends HashMap<K, Deque<V>>
 {
 	private static final long serialVersionUID = -832012439499014181L;
 

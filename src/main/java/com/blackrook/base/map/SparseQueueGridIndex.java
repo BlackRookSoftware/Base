@@ -14,9 +14,10 @@ import java.util.LinkedList;
  * A sparse grid index that contains lists of objects.
  * Be advised that the {@link #get(int, int)} method may return null if no objects
  * are queued at that particular spot.
+ * @param <T> the value type.
  * @author Matthew Tropiano
  */
-public class SparseQueueGridIndex<T extends Object> extends SparseGridIndex<Deque<T>>
+public class SparseQueueGridIndex<T> extends SparseGridIndex<Deque<T>>
 {
 	/** Holds the true size of this grid map. */
 	private int trueSize;

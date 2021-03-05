@@ -14,8 +14,9 @@ import java.util.Map;
  * This is a grid that contains a grid of Object data generally used for maps and lookups.
  * This map is <i>sparse</i>, which means it uses as little memory as possible, which can increase the lookup time in most cases.
  * @author Matthew Tropiano
+ * @param <T> the value type.
  */
-public class SparseGridIndex<T extends Object> implements Iterable<Map.Entry<SparseGridIndex.Pair, T>>
+public class SparseGridIndex<T> implements Iterable<Map.Entry<SparseGridIndex.Pair, T>>
 {
 	private static final ThreadLocal<Pair> CACHE_PAIR = ThreadLocal.withInitial(()->new Pair());
 	

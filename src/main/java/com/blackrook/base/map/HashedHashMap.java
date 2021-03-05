@@ -18,6 +18,8 @@ import java.util.Set;
  * not added objects. The method {@link #get(Object)} returns the hash associated with
  * the key.
  * @author Matthew Tropiano
+ * @param <K> the key type.
+ * @param <V> the value type.
  */
 public class HashedHashMap<K, V> extends HashMap<K, Set<V>>
 {

@@ -74,127 +74,20 @@ public final class HTTPUtils
 		return out;
 	});
 	
-	private static class BlobContent implements HTTPContent
+	/**
+	 * Interface for monitoring change in a data transfer.
+	 */
+	@FunctionalInterface
+	public interface TransferMonitor
 	{
-		private String contentType;
-		private String contentEncoding;
-		private byte[] data;
-		
-		private BlobContent(String contentType, String contentEncoding, byte[] data)
-		{
-			this.contentType = contentType;
-			this.contentEncoding = contentEncoding;
-			this.data = data;
-		}
-		
-		@Override
-		public String getContentType()
-		{
-			return contentType;
-		}
-		
-		@Override
-		public String getCharset()
-		{
-			return null;
-		}
-		
-		@Override
-		public String getEncoding()
-		{
-			return contentEncoding;
-		}
-		
-		@Override
-		public long getLength()
-		{
-			return data.length;
-		}
-		
-		@Override
-		public InputStream getInputStream() throws IOException
-		{
-			return new ByteArrayInputStream(data);
-		}
-		
+		/**
+		 * Called when a series of bytes move from one place to another. 
+		 * @param current the current amount in bytes.
+		 * @param max the maximum amount/target in bytes, if any.
+		 */
+		void onProgressChange(long current, Long max);
 	}
-
-	private static class TextContent extends BlobContent
-	{
-		private String contentCharset;
 	
-		private TextContent(String contentType, String contentCharset, String contentEncoding, byte[] data)
-		{
-			super(contentType, contentEncoding, data);
-			this.contentCharset = contentCharset;
-		}
-		
-		@Override
-		public String getCharset()
-		{
-			return contentCharset;
-		}
-		
-	}
-
-	private static class FileContent implements HTTPContent
-	{
-		private String contentType;
-		private String encodingType;
-		private File file;
-		
-		private FileContent(String contentType, String encodingType, File file)
-		{
-			if (file == null)
-				throw new IllegalArgumentException("file cannot be null.");
-			if (!file.exists())
-				throw new IllegalArgumentException("File " + file.getPath() + " cannot be found.");
-
-			this.contentType = contentType;
-			this.encodingType = encodingType;
-			this.file = file;
-		}
-		
-		@Override
-		public String getContentType()
-		{
-			return contentType;
-		}
-	
-		@Override
-		public String getCharset()
-		{
-			return null;
-		}
-	
-		@Override
-		public String getEncoding()
-		{
-			return encodingType;
-		}
-	
-		@Override
-		public long getLength()
-		{
-			return file.length();
-		}
-	
-		@Override
-		public InputStream getInputStream() throws IOException
-		{
-			return new FileInputStream(file);
-		}
-		
-	}
-
-	private static class FormContent extends TextContent
-	{
-		private FormContent(HTTPParameters parameters)
-		{
-			super("x-www-form-urlencoded", Charset.defaultCharset().displayName(), null, parameters.toString().getBytes());
-		}
-	}
-
 	/**
 	 * Interface for reading an HTTPResponse from a URL call.
 	 * @param <R> the return type.
@@ -206,7 +99,7 @@ public final class HTTPUtils
 		 * Called to read the HTTP response from an HTTP call.
 		 * @param response the response object.
 		 * @return the returned decoded object.
-		 * @throws IOException if read error occurs.
+		 * @throws IOException if a read error occurs.
 		 */
 		R onHTTPResponse(HTTPResponse response) throws IOException;
 		
@@ -238,7 +131,8 @@ public final class HTTPUtils
 		static HTTPReader<byte[]> BYTE_CONTENT_READER = (response) ->
 		{
 			ByteArrayOutputStream bos = new ByteArrayOutputStream();
-			relay(response.getContentStream(), bos);
+			long length = response.getLength() != null ? response.getLength() : -1L;
+			relay(response.getContentStream(), bos, 8192, length, null);
 			return bos.toByteArray();
 		};
 		
@@ -630,7 +524,7 @@ public final class HTTPUtils
 			 */
 			public long getLength()
 			{
-				return getPartHeaderBytes().length + data.getDataLength();				
+				return getPartHeaderBytes().length + data.getDataLength();
 			}
 
 			/**
@@ -639,7 +533,7 @@ public final class HTTPUtils
 			 */
 			public InputStream getInputStream() throws IOException
 			{
-				return new PartInputStream();				
+				return new PartInputStream();
 			}
 
 			private class PartInputStream extends InputStream
@@ -769,6 +663,129 @@ public final class HTTPUtils
 				streamIterator = null;
 				super.close();
 			}
+		}
+	}
+
+	private static class BlobContent implements HTTPContent
+	{
+		private String contentType;
+		private String contentEncoding;
+		private byte[] data;
+		
+		private BlobContent(String contentType, String contentEncoding, byte[] data)
+		{
+			this.contentType = contentType;
+			this.contentEncoding = contentEncoding;
+			this.data = data;
+		}
+		
+		@Override
+		public String getContentType()
+		{
+			return contentType;
+		}
+		
+		@Override
+		public String getCharset()
+		{
+			return null;
+		}
+		
+		@Override
+		public String getEncoding()
+		{
+			return contentEncoding;
+		}
+		
+		@Override
+		public long getLength()
+		{
+			return data.length;
+		}
+		
+		@Override
+		public InputStream getInputStream() throws IOException
+		{
+			return new ByteArrayInputStream(data);
+		}
+		
+	}
+
+	private static class TextContent extends BlobContent
+	{
+		private String contentCharset;
+	
+		private TextContent(String contentType, String contentCharset, String contentEncoding, byte[] data)
+		{
+			super(contentType, contentEncoding, data);
+			this.contentCharset = contentCharset;
+		}
+		
+		@Override
+		public String getCharset()
+		{
+			return contentCharset;
+		}
+		
+	}
+
+	private static class FileContent implements HTTPContent
+	{
+		private String contentType;
+		private String encodingType;
+		private String charsetType;
+		private File file;
+		
+		private FileContent(String contentType, String encodingType, String charsetType, File file)
+		{
+			if (file == null)
+				throw new IllegalArgumentException("file cannot be null.");
+			if (!file.exists())
+				throw new IllegalArgumentException("File " + file.getPath() + " cannot be found.");
+	
+			this.contentType = contentType;
+			this.encodingType = encodingType;
+			this.charsetType = charsetType;
+			this.file = file;
+		}
+		
+		@Override
+		public String getContentType()
+		{
+			return contentType;
+		}
+	
+		@Override
+		public String getCharset()
+		{
+			return charsetType;
+		}
+	
+		@Override
+		public String getEncoding()
+		{
+			return encodingType;
+		}
+	
+		@Override
+		public long getLength()
+		{
+			return file.length();
+		}
+	
+		@Override
+		public InputStream getInputStream() throws IOException
+		{
+			return new FileInputStream(file);
+		}
+		
+	}
+
+	private static class FormContent extends TextContent
+	{
+		private FormContent(HTTPParameters parameters)
+		{
+			super("x-www-form-urlencoded", Charset.defaultCharset().displayName(), null, parameters.toString().getBytes());
 		}
 	}
 
@@ -913,9 +930,21 @@ public final class HTTPUtils
 		public HTTPHeaders copy()
 		{
 			HTTPHeaders out = new HTTPHeaders();
-			for (Map.Entry<String, String> entry : map.entrySet())
-				out.setHeader(entry.getKey(), entry.getValue());
+			out.merge(this);
 			return out;
+		}
+		
+		/**
+		 * Adds the header entries from another set of headers to this one.
+		 * Existing names are overwritten.
+		 * @param headers the input headers.
+		 * @return this, for chaining.
+		 */
+		public HTTPHeaders merge(HTTPHeaders headers)
+		{
+			for (Map.Entry<String, String> entry : headers.map.entrySet())
+				this.setHeader(entry.getKey(), entry.getValue());
+			return this;
 		}
 
 		/**
@@ -951,10 +980,23 @@ public final class HTTPUtils
 		public HTTPParameters copy()
 		{
 			HTTPParameters out = new HTTPParameters();
-			for (Map.Entry<String, List<String>> entry : map.entrySet())
-				for (String value : entry.getValue())
-					out.addParameter(entry.getKey(), value);
+			out.merge(this);
 			return out;
+		}
+
+		/**
+		 * Adds the parameter entries from another set of parameters to this one.
+		 * Parameters are added, not replaced.
+		 * @param parameters the input parameters.
+		 * @return this, for chaining.
+		 * @see #addParameter(String, Object)
+		 */
+		public HTTPParameters merge(HTTPParameters parameters)
+		{
+			for (Map.Entry<String, List<String>> entry : parameters.map.entrySet())
+				for (String value : entry.getValue())
+					this.addParameter(entry.getKey(), value);
+			return this;
 		}
 
 		/**
@@ -1033,7 +1075,7 @@ public final class HTTPUtils
 		private Map<String, List<String>> headers;
 		private int statusCode;
 		private String statusMessage;
-		private int length;
+		private Long length;
 		private InputStream contentStream;
 		private String charset;
 		private String contentType;
@@ -1102,9 +1144,9 @@ public final class HTTPUtils
 		}
 	
 		/**
-		 * @return the response's content length.
+		 * @return the response's content length (if reported).
 		 */
-		public int getLength() 
+		public Long getLength() 
 		{
 			return length;
 		}
@@ -1115,6 +1157,32 @@ public final class HTTPUtils
 		public InputStream getContentStream() 
 		{
 			return contentStream;
+		}
+		
+		/**
+		 * Convenience function for transferring the entirety of the content 
+		 * stream to another.
+		 * @param out the output stream.
+		 * @return the amount of bytes moved.
+		 * @throws IOException if an I/O error occurs during transfer.
+		 */
+		public final long relayContent(OutputStream out) throws IOException
+		{
+			return relayContent(out, null);
+		}
+		
+		/**
+		 * Convenience function for transferring the entirety of the content 
+		 * stream to another, monitoring the progress as it goes.
+		 * <p>Equivalent to: <code>return relay(getContentStream(), out, 8192, getLength(), monitor);</code>
+		 * @param out the output stream.
+		 * @param monitor the optional monitor. Can be null.
+		 * @return the amount of bytes moved.
+		 * @throws IOException if an I/O error occurs during transfer.
+		 */
+		public final long relayContent(OutputStream out, TransferMonitor monitor) throws IOException
+		{
+			return relay(getContentStream(), out, 8192, getLength(), monitor);
 		}
 		
 		/**
@@ -1172,6 +1240,279 @@ public final class HTTPUtils
 		}
 	}
 
+	/**
+	 * A request builder, as an alternative to calling the "http" methods directly.
+	 */
+	public static class HTTPRequest
+	{
+		/** HTTP Method. */
+		private String method;
+		/** Target URL string. */
+		private String url;
+		/** HTTP Headers. */
+		private HTTPHeaders headers;
+		/** HTTP Query Parameters. */
+		private HTTPParameters parameters;
+		/** Request timeout milliseconds. */
+		private int timeoutMillis;
+		/** Default charset encoding (on response). */
+		private String defaultCharsetEncoding;
+		/** HTTP Content Body. */
+		private HTTPContent content;
+		/** Upload Transfer Monitor. */
+		private TransferMonitor monitor;
+		
+		private HTTPRequest()
+		{
+			this.method = null;
+			this.url = null;
+			this.headers = HTTPUtils.headers();
+			this.parameters = HTTPUtils.parameters();
+			this.timeoutMillis = DEFAULT_TIMEOUT_MILLIS;
+			this.defaultCharsetEncoding = null;
+			this.content = null;
+			this.monitor = null;
+		}
+		
+		/**
+		 * Starts a GET request builder.
+		 * @param url the URL to target.
+		 * @return an {@link HTTPRequest}.
+		 */
+		public static HTTPRequest get(String url)
+		{
+			HTTPRequest out = new HTTPRequest();
+			out.method = HTTP_METHOD_GET;
+			out.url = url;
+			return out;
+		}
+
+		/**
+		 * Starts a HEAD request builder.
+		 * @param url the URL to target.
+		 * @return an {@link HTTPRequest}.
+		 */
+		public static HTTPRequest head(String url)
+		{
+			HTTPRequest out = new HTTPRequest();
+			out.method = HTTP_METHOD_HEAD;
+			out.url = url;
+			return out;
+		}
+
+		/**
+		 * Starts a DELETE request builder.
+		 * @param url the URL to target.
+		 * @return an {@link HTTPRequest}.
+		 */
+		public static HTTPRequest delete(String url)
+		{
+			HTTPRequest out = new HTTPRequest();
+			out.method = HTTP_METHOD_DELETE;
+			out.url = url;
+			return out;
+		}
+
+		/**
+		 * Starts a OPTIONS request builder.
+		 * @param url the URL to target.
+		 * @return an {@link HTTPRequest}.
+		 */
+		public static HTTPRequest options(String url)
+		{
+			HTTPRequest out = new HTTPRequest();
+			out.method = HTTP_METHOD_OPTIONS;
+			out.url = url;
+			return out;
+		}
+
+		/**
+		 * Starts a TRACE request builder.
+		 * @param url the URL to target.
+		 * @return an {@link HTTPRequest}.
+		 */
+		public static HTTPRequest trace(String url)
+		{
+			HTTPRequest out = new HTTPRequest();
+			out.method = HTTP_METHOD_TRACE;
+			out.url = url;
+			return out;
+		}
+
+		/**
+		 * Starts a PUT request builder.
+		 * @param url the URL to target.
+		 * @return an {@link HTTPRequest}.
+		 */
+		public static HTTPRequest put(String url)
+		{
+			HTTPRequest out = new HTTPRequest();
+			out.method = HTTP_METHOD_PUT;
+			out.url = url;
+			return out;
+		}
+
+		/**
+		 * Starts a POST request builder.
+		 * @param url the URL to target.
+		 * @return an {@link HTTPRequest}.
+		 */
+		public static HTTPRequest post(String url)
+		{
+			HTTPRequest out = new HTTPRequest();
+			out.method = HTTP_METHOD_POST;
+			out.url = url;
+			return out;
+		}
+
+		/**
+		 * Makes a deep copy of this request, such that
+		 * changes to this one do not affect the original (the content and monitor, however, if any, is reference-copied). 
+		 * @return a new HTTPRequest that is a copy of this one.
+		 */
+		public HTTPRequest copy()
+		{
+			HTTPRequest out = new HTTPRequest();
+			out.method = this.method;
+			out.url = this.url;
+			out.headers = this.headers.copy();
+			out.parameters = this.parameters.copy();
+			out.timeoutMillis = this.timeoutMillis;
+			out.defaultCharsetEncoding = this.defaultCharsetEncoding;
+			out.content = this.content;
+			out.monitor = this.monitor;
+			return out;
+		}
+		
+		/**
+		 * Replaces the headers on this request.
+		 * @param headers the new headers.
+		 * @return this request, for chaining.
+		 */
+		public HTTPRequest headers(HTTPHeaders headers)
+		{
+			this.headers = headers;
+			return this;
+		}
+		
+		/**
+		 * Adds headers to the headers on this request.
+		 * @param headers the source header map.
+		 * @return this request, for chaining.
+		 * @see HTTPHeaders#merge(HTTPHeaders)
+		 */
+		public HTTPRequest addHeaders(HTTPHeaders headers)
+		{
+			this.headers.merge(headers);
+			return this;
+		}
+		
+		/**
+		 * Replaces the parameters on this request.
+		 * @param parameters the new parameters.
+		 * @return this request, for chaining.
+		 */
+		public HTTPRequest parameters(HTTPParameters parameters)
+		{
+			this.parameters = parameters;
+			return this;
+		}
+		
+		/**
+		 * Adds parameters to the headers on this request.
+		 * @param parameters the source parameter map.
+		 * @return this request, for chaining.
+		 * @see HTTPHeaders#merge(HTTPHeaders)
+		 */
+		public HTTPRequest addParameters(HTTPParameters parameters)
+		{
+			this.parameters.merge(parameters);
+			return this;
+		}
+		
+		/**
+		 * Sets the timeout for this request.
+		 * If this is not set, the current default, {@link HTTPUtils#DEFAULT_TIMEOUT_MILLIS}, is the default.
+		 * @param timeoutMillis the timeout in milliseconds.
+		 * @return this request, for chaining.
+		 */
+		public HTTPRequest timeout(int timeoutMillis) 
+		{
+			this.timeoutMillis = timeoutMillis;
+			return this;
+		}
+
+		/**
+		 * Sets the default charset encoding to use on the response if none is sent back
+		 * from the server.
+		 * @param defaultCharsetEncoding the new encoding name.
+		 * @return this request, for chaining.
+		 */
+		public HTTPRequest defaultCharsetEncoding(String defaultCharsetEncoding) 
+		{
+			this.defaultCharsetEncoding = defaultCharsetEncoding;
+			return this;
+		}
+		
+		/**
+		 * Sets the content body for this request.
+		 * @param content the content.
+		 * @return this request, for chaining.
+		 */
+		public HTTPRequest content(HTTPContent content) 
+		{
+			this.content = content;
+			return this;
+		}
+		
+		/**
+		 * Sets the upload monitor callback for the request.
+		 * @param monitor the monitor to call.
+		 * @return this request, for chaining.
+		 */
+		public HTTPRequest monitor(TransferMonitor monitor) 
+		{
+			this.monitor = monitor;
+			return this;
+		}
+		
+		/**
+		 * Sends this request and gets a response.
+		 * Best used in a try-with-resources block so that the response input stream auto-closes 
+		 * (but not the connection, which stays alive if possible), like so:
+		 * <pre><code>
+		 * try (HTTPResponse response = request.send())
+		 * {
+		 *     // ... read response ...
+		 * }
+		 * </code></pre>
+		 * @return an HTTPResponse object.
+		 * @throws IOException if an error happens during the read/write.
+		 * @throws SocketTimeoutException if the socket read times out.
+		 * @throws ProtocolException if the request method is incorrect, or not an HTTP URL.
+		 */
+		public HTTPResponse send() throws IOException
+		{
+			return httpFetch(method, new URL(urlParams(url, parameters)), headers, content, defaultCharsetEncoding, timeoutMillis, monitor);
+		}
+
+		/**
+		 * Sends this request and gets a decoded response via an {@link HTTPReader}.
+		 * The response input stream auto-closes after read (but not the connection, which stays alive if possible).
+		 * @param <T> the return type.
+		 * @param reader the reader to use to read the response.
+		 * @return the decoded object from the response.
+		 * @throws IOException if an error happens during the read/write.
+		 * @throws SocketTimeoutException if the socket read times out.
+		 * @throws ProtocolException if the requestMethod is incorrect, or not an HTTP URL.
+		 */
+		public <T> T send(HTTPReader<T> reader) throws IOException
+		{
+			return httpFetch(method, new URL(urlParams(url, parameters)), headers, content, defaultCharsetEncoding, timeoutMillis, monitor, reader);
+		}
+	}
+	
+	
 	/**
 	 * Makes an HTTP-acceptable ISO date string from a Date.
 	 * @param date the date to format.
@@ -1313,12 +1654,12 @@ public final class HTTPUtils
 	 * Creates a file-based content body for an HTTP request.
 	 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
 	 * @param contentType the file's content type.
-	 * @param file the file to read from.
+	 * @param file the file to read from on send.
 	 * @return a content object representing the content.
 	 */
 	public static HTTPContent createFileContent(String contentType, File file)
 	{
-		return new FileContent(contentType, null, file);
+		return new FileContent(contentType, null, null, file);
 	}
 
 	/**
@@ -1326,12 +1667,39 @@ public final class HTTPUtils
 	 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
 	 * @param contentType the file's content type.
 	 * @param encodingType the data encoding type for the file's payload (e.g. "gzip" or "base64").
-	 * @param file the file to read from.
+	 * @param file the file to read from on send.
 	 * @return a content object representing the content.
 	 */
 	public static HTTPContent createFileContent(String contentType, String encodingType, File file)
 	{
-		return new FileContent(contentType, encodingType, file);
+		return new FileContent(contentType, encodingType, null, file);
+	}
+
+	/**
+	 * Creates a file-based content body for an HTTP request, presumably a text file.
+	 * The default system text encoding is presumed.
+	 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
+	 * @param contentType the file's content type.
+	 * @param file the file to read from on send.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent createTextFileContent(String contentType, File file)
+	{
+		return new FileContent(contentType, null, Charset.defaultCharset().name(), file);
+	}
+
+	/**
+	 * Creates file based content body for an HTTP request, presumably a text file encoded
+	 * with a specific charset.
+	 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
+	 * @param contentType the file's content type.
+	 * @param charsetType the charset name for the file's payload (e.g. "utf-8" or "ascii").
+	 * @param file the file to read from on send.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent createTextFileContent(String contentType, String charsetType, File file)
+	{
+		return new FileContent(contentType, null, charsetType, file);
 	}
 
 	/**
@@ -1472,7 +1840,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpGet(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, null);
 	}
 
 	/**
@@ -1560,7 +1928,7 @@ public final class HTTPUtils
 	public static <R> R httpGet(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_GET, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, null, reader);
 	}
 
 	/**
@@ -1581,7 +1949,7 @@ public final class HTTPUtils
 	 */
 	public static HTTPResponse httpHead(String url) throws IOException
 	{
-		return httpHead(url, null, null, DEFAULT_TIMEOUT_MILLIS);	
+		return httpHead(url, null, null, DEFAULT_TIMEOUT_MILLIS);
 	}
 
 	/**
@@ -1603,7 +1971,7 @@ public final class HTTPUtils
 	 */
 	public static HTTPResponse httpHead(String url, int socketTimeoutMillis) throws IOException
 	{
-		return httpHead(url, null, null, socketTimeoutMillis);	
+		return httpHead(url, null, null, socketTimeoutMillis);
 	}
 
 	/**
@@ -1627,7 +1995,7 @@ public final class HTTPUtils
 	 */
 	public static HTTPResponse httpHead(String url, HTTPHeaders headers, int socketTimeoutMillis) throws IOException
 	{
-		return httpHead(url, headers, null, socketTimeoutMillis);	
+		return httpHead(url, headers, null, socketTimeoutMillis);
 	}
 
 	/**
@@ -1651,7 +2019,7 @@ public final class HTTPUtils
 	 */
 	public static HTTPResponse httpHead(String url, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
 	{
-		return httpHead(url, null, parameters, socketTimeoutMillis);	
+		return httpHead(url, null, parameters, socketTimeoutMillis);
 	}
 
 	/**
@@ -1678,7 +2046,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpHead(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, null);
 	}
 
 	/**
@@ -1766,7 +2134,7 @@ public final class HTTPUtils
 	public static <R> R httpHead(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_HEAD, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, null, reader);
 	}
 
 	/**
@@ -1884,7 +2252,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpDelete(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, null);
 	}
 
 	/**
@@ -1972,7 +2340,7 @@ public final class HTTPUtils
 	public static <R> R httpDelete(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_DELETE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, null, reader);
 	}
 
 	/**
@@ -2090,7 +2458,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpOptions(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, null);
 	}
 
 	/**
@@ -2178,7 +2546,7 @@ public final class HTTPUtils
 	public static <R> R httpOptions(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_OPTIONS, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, null, reader);
 	}
 
 	/**
@@ -2296,7 +2664,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpTrace(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, null);
 	}
 
 	/**
@@ -2384,7 +2752,7 @@ public final class HTTPUtils
 	public static <R> R httpTrace(String url, HTTPHeaders headers, HTTPParameters parameters, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_TRACE, new URL(urlParams(url, parameters)), headers, null, null, socketTimeoutMillis, null, reader);
 	}
 
 	/**
@@ -2542,7 +2910,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpPut(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, null);
 	}
 
 	/**
@@ -2668,7 +3036,301 @@ public final class HTTPUtils
 	public static <R> R httpPut(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, null, reader);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPut(url, content))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static HTTPResponse httpPut(String url, HTTPContent content, TransferMonitor uploadMonitor) throws IOException
+	{
+		return httpPut(url, null, null, content, DEFAULT_TIMEOUT_MILLIS, uploadMonitor);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPut(url, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static HTTPResponse httpPut(String url, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor) throws IOException
+	{
+		return httpPut(url, null, null, content, socketTimeoutMillis, uploadMonitor);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPut(url, headers, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static HTTPResponse httpPut(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor) throws IOException
+	{
+		return httpPut(url, headers, null, content, socketTimeoutMillis, uploadMonitor);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPut(url, parameters, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPParameters
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static HTTPResponse httpPut(String url, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor) throws IOException
+	{
+		return httpPut(url, null, parameters, content, socketTimeoutMillis, uploadMonitor);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPut(url, headers, parameters, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static HTTPResponse httpPut(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor) throws IOException
+	{
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
+		return httpFetch(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, uploadMonitor);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R httpPut(String url, HTTPContent content, TransferMonitor uploadMonitor, HTTPReader<R> reader) throws IOException
+	{
+		return httpPut(url, null, null, content, DEFAULT_TIMEOUT_MILLIS, uploadMonitor, reader);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R httpPut(String url, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor, HTTPReader<R> reader) throws IOException
+	{
+		return httpPut(url, null, null, content, socketTimeoutMillis, uploadMonitor, reader);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R httpPut(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor, HTTPReader<R> reader) throws IOException
+	{
+		return httpPut(url, headers, null, content, socketTimeoutMillis, uploadMonitor, reader);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R httpPut(String url, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor, HTTPReader<R> reader) throws IOException
+	{
+		return httpPut(url, null, parameters, content, socketTimeoutMillis, uploadMonitor, reader);
+	}
+
+	/**
+	 * Sends a PUT request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R httpPut(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor, HTTPReader<R> reader) throws IOException
+	{
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
+		return httpFetch(HTTP_METHOD_PUT, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, uploadMonitor, reader);
 	}
 
 	/**
@@ -2837,7 +3499,7 @@ public final class HTTPUtils
 	public static HTTPResponse httpPost(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis) throws IOException
 	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis);
+		return httpFetch(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, null);
 	}
 
 	/**
@@ -2965,17 +3627,325 @@ public final class HTTPUtils
 	 */
 	public static <R> R httpPost(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
 	{
+		return httpPost(url, headers, parameters, content, socketTimeoutMillis, null, reader);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPost(url, content))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpPost(String url, HTTPContent content, TransferMonitor uploadMonitor) throws IOException
+	{
+		return httpPost(url, null, null, content, DEFAULT_TIMEOUT_MILLIS, uploadMonitor);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPost(url, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpPost(String url, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor) throws IOException
+	{
+		return httpPost(url, null, null, content, socketTimeoutMillis, uploadMonitor);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPost(url, headers, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpPost(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor) throws IOException
+	{
+		return httpPost(url, headers, null, content, socketTimeoutMillis, uploadMonitor);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPost(url, parameters, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpPost(String url, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor) throws IOException
+	{
+		return httpPost(url, null, parameters, content, socketTimeoutMillis, uploadMonitor);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * <p>
+	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
+	 * <pre><code>
+	 * try (HTTPResponse response = httpPost(url, headers, parameters, content, socketTimeoutMillis))
+	 * {
+	 *     // ... read response ...
+	 * }
+	 * </code></pre>
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @return the response from an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static HTTPResponse httpPost(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor) throws IOException
+	{
 		parameters = parameters == null ? NO_PARAMETERS : parameters;
-		return httpFetch(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, reader);
+		return httpFetch(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, uploadMonitor);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R httpPost(String url, HTTPContent content, TransferMonitor uploadMonitor, HTTPReader<R> reader) throws IOException
+	{
+		return httpPost(url, null, null, content, DEFAULT_TIMEOUT_MILLIS, uploadMonitor, reader);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 */
+	public static <R> R httpPost(String url, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor, HTTPReader<R> reader) throws IOException
+	{
+		return httpPost(url, null, null, content, socketTimeoutMillis, uploadMonitor, reader);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 */
+	public static <R> R httpPost(String url, HTTPHeaders headers, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor, HTTPReader<R> reader) throws IOException
+	{
+		return httpPost(url, headers, null, content, socketTimeoutMillis, uploadMonitor, reader);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 */
+	public static <R> R httpPost(String url, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor, HTTPReader<R> reader) throws IOException
+	{
+		return httpPost(url, null, parameters, content, socketTimeoutMillis, uploadMonitor, reader);
+	}
+
+	/**
+	 * Sends a POST request to an HTTP URL.
+	 * The stream is closed afterward (but not the connection, which may be pooled).
+	 * @param <R> the return type.
+	 * @param url the URL to open and read.
+	 * @param headers a map of header to header value to add to the request (can be null for no headers).
+	 * @param parameters the optional set of parameters to add to the URL (can be null for no parameters).
+	 * @param content if not null, add this content to the body. Otherwise, the body will be empty.
+	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
+	 * @param reader the reader to use to read the response and return the data in a useful shape.
+	 * @return the content from opening an HTTP request.
+	 * @throws IOException if an error happens during the read/write.
+	 * @throws SocketTimeoutException if the socket read times out.
+	 * @see HTTPHeaders
+	 * @see #createByteContent(String, byte[])
+	 * @see #createByteContent(String, String, byte[])
+	 * @see #createTextContent(String, String)
+	 * @see #createFileContent(String, File)
+	 * @see #createFileContent(String, String, File)
+	 * @see #createFormContent(HTTPParameters)
+	 * @see #createMultipartContent()
+	 * @see HTTPHeaders
+	 * @see HTTPParameters
+	 */
+	public static <R> R httpPost(String url, HTTPHeaders headers, HTTPParameters parameters, HTTPContent content, int socketTimeoutMillis, TransferMonitor uploadMonitor, HTTPReader<R> reader) throws IOException
+	{
+		parameters = parameters == null ? NO_PARAMETERS : parameters;
+		return httpFetch(HTTP_METHOD_POST, new URL(urlParams(url, parameters)), headers, content, null, socketTimeoutMillis, uploadMonitor, reader);
 	}
 
 	/**
 	 * Gets the content from a opening an HTTP URL.
 	 * The response is encapsulated and returned, with an open input stream to read from the body of the return.
+	 * If the response/stream is closed afterward, it will not close the connection (which may be pooled).
 	 * <p>
 	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
 	 * <pre><code>
-	 * try (HTTPResponse response = getHTTPContent(requestMethod, url, headers, content, defaultResponseCharset, socketTimeoutMillis))
+	 * try (HTTPResponse response = getHTTPContent(requestMethod, url, headers, content, defaultResponseCharset, socketTimeoutMillis, uploadMonitor))
 	 * {
 	 *     // ... read response ...
 	 * }
@@ -2986,6 +3956,7 @@ public final class HTTPUtils
 	 * @param content if not null, add this content to the body.
 	 * @param defaultResponseCharset if the response charset is not specified, use this one.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
 	 * @return the response from an HTTP request.
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
@@ -2999,7 +3970,7 @@ public final class HTTPUtils
 	 * @see #createFormContent(HTTPParameters)
 	 * @see #createMultipartContent()
 	 */
-	public static HTTPResponse httpFetch(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis) throws IOException
+	public static HTTPResponse httpFetch(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis, TransferMonitor uploadMonitor) throws IOException
 	{
 		Objects.requireNonNull(requestMethod, "request method is null");
 		
@@ -3016,6 +3987,7 @@ public final class HTTPUtils
 		// set up body data.
 		if (content != null)
 		{
+			long uploadLen = content.getLength();
 			conn.setFixedLengthStreamingMode(content.getLength());
 			conn.setRequestProperty("Content-Type", content.getContentType() == null ? "application/octet-stream" : content.getContentType());
 			if (content.getEncoding() != null)
@@ -3023,14 +3995,15 @@ public final class HTTPUtils
 			conn.setDoOutput(true);
 			try (DataOutputStream dos = new DataOutputStream(conn.getOutputStream()))
 			{
-				relay(content.getInputStream(), dos, 8192);
+				relay(content.getInputStream(), dos, 8192, uploadLen, uploadMonitor);
 			}
 		}
 	
 		HTTPResponse response = new HTTPResponse();
 		response.statusCode = conn.getResponseCode();
 		response.statusMessage = conn.getResponseMessage();
-		response.length = conn.getContentLength();
+		int conlen = conn.getContentLength();
+		response.length = conlen < 0 ? null : (long)conlen;
 		response.encoding = conn.getContentEncoding();
 		response.contentTypeHeader = conn.getContentType();
 
@@ -3089,6 +4062,7 @@ public final class HTTPUtils
 	 * @param content if not null, add this content to the body.
 	 * @param defaultResponseCharset if the response charset is not specified, use this one.
 	 * @param socketTimeoutMillis the socket timeout time in milliseconds. 0 is forever.
+	 * @param uploadMonitor an optional callback during upload for upload progress. Can be null.
 	 * @param reader the reader to use to read the response and return the data in a useful shape.
 	 * @return the read content from an HTTP request, via the provided reader.
 	 * @throws IOException if an error happens during the read/write.
@@ -3103,9 +4077,9 @@ public final class HTTPUtils
 	 * @see #createFormContent(HTTPParameters)
 	 * @see #createMultipartContent()
 	 */
-	public static <R> R httpFetch(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis, HTTPReader<R> reader) throws IOException
+	public static <R> R httpFetch(String requestMethod, URL url, HTTPHeaders headers, HTTPContent content, String defaultResponseCharset, int socketTimeoutMillis, TransferMonitor uploadMonitor, HTTPReader<R> reader) throws IOException
 	{
-		try (HTTPResponse response = httpFetch(requestMethod, url, headers, content, defaultResponseCharset, socketTimeoutMillis))
+		try (HTTPResponse response = httpFetch(requestMethod, url, headers, content, defaultResponseCharset, socketTimeoutMillis, uploadMonitor))
 		{
 			return reader.onHTTPResponse(response);
 		}
@@ -3151,61 +4125,27 @@ public final class HTTPUtils
 	 * that will block if the input stream blocks for additional input.
 	 * This method is thread-safe.
 	 * @param in the input stream to grab data from.
-	 * @param bufferSize the buffer size for the I/O. Must be &gt; 0.
-	 * @return the total amount of bytes relayed.
-	 * @throws IOException if a read or write error occurs.
-	 */
-	private static int relay(InputStream in, OutputStream out) throws IOException
-	{
-		return relay(in, out, 8192, -1);
-	}
-
-	/**
-	 * Reads from an input stream, reading in a consistent set of data
-	 * and writing it to the output stream. The read/write is buffered
-	 * so that it does not bog down the OS's other I/O requests.
-	 * This method finishes when the end of the source stream is reached.
-	 * Note that this may block if the input stream is a type of stream
-	 * that will block if the input stream blocks for additional input.
-	 * This method is thread-safe.
-	 * @param in the input stream to grab data from.
 	 * @param out the output stream to write the data to.
 	 * @param bufferSize the buffer size for the I/O. Must be &gt; 0.
+	 * @param maxLength the maximum amount of bytes to relay, or null for no max.
+	 * @param monitor the transfer monitor to call on changes.
 	 * @return the total amount of bytes relayed.
 	 * @throws IOException if a read or write error occurs.
 	 */
-	private static int relay(InputStream in, OutputStream out, int bufferSize) throws IOException
+	private static long relay(InputStream in, OutputStream out, int bufferSize, Long maxLength, TransferMonitor monitor) throws IOException
 	{
-		return relay(in, out, bufferSize, -1);
-	}
-
-	/**
-	 * Reads from an input stream, reading in a consistent set of data
-	 * and writing it to the output stream. The read/write is buffered
-	 * so that it does not bog down the OS's other I/O requests.
-	 * This method finishes when the end of the source stream is reached.
-	 * Note that this may block if the input stream is a type of stream
-	 * that will block if the input stream blocks for additional input.
-	 * This method is thread-safe.
-	 * @param in the input stream to grab data from.
-	 * @param out the output stream to write the data to.
-	 * @param bufferSize the buffer size for the I/O. Must be &gt; 0.
-	 * @param maxLength the maximum amount of bytes to relay, or a value &lt; 0 for no max.
-	 * @return the total amount of bytes relayed.
-	 * @throws IOException if a read or write error occurs.
-	 */
-	private static int relay(InputStream in, OutputStream out, int bufferSize, int maxLength) throws IOException
-	{
-		int total = 0;
+		long total = 0;
 		int buf = 0;
 			
 		byte[] RELAY_BUFFER = new byte[bufferSize];
 		
-		while ((buf = in.read(RELAY_BUFFER, 0, Math.min(maxLength < 0 ? Integer.MAX_VALUE : maxLength, bufferSize))) > 0)
+		while ((buf = in.read(RELAY_BUFFER, 0, Math.min(maxLength == null ? Integer.MAX_VALUE : (int)Math.min(maxLength, Integer.MAX_VALUE), bufferSize))) > 0)
 		{
 			out.write(RELAY_BUFFER, 0, buf);
 			total += buf;
-			if (maxLength >= 0)
+			if (monitor != null)
+				monitor.onProgressChange(total, maxLength);
+			if (maxLength != null && maxLength >= 0)
 				maxLength -= buf;
 		}
 		return total;

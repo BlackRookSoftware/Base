@@ -1,34 +1,44 @@
 /*******************************************************************************
- * Copyright (c) 2019-2020 Black Rook Software
+ * Copyright (c) 2019-2021 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
 package com.blackrook.base.util;
 
 /**
- * Simple bit functions.
+ * Some bit operation utils.
  * @author Matthew Tropiano
  */
-public final class BitUtils
+public final class BitUtils 
 {
-	private BitUtils() {}
 
 	/**
-	 * Checks if bits are set in a value.
-	 * @param value		the value.
-	 * @param test		the testing bits.
-	 * @return			true if all of the bits set in test are set in value, false otherwise.
+	 * Checks if ALL bits are set in a value.
+	 * @param value the source value.
+	 * @param bits the testing bits.
+	 * @return true if all of the bits set in bits are set in value, false otherwise.
 	 */
-	public static boolean bitIsSet(long value, long test)
+	public static boolean allBitsAreSet(long value, long bits)
 	{
-		return (value & test) == test;
+		return (value & bits) == bits;
+	}
+
+	/**
+	 * Checks if ANY bits are set in a value.
+	 * @param value the source value.
+	 * @param bits the testing bits.
+	 * @return true if any of the bits set in bits are set in value, false otherwise.
+	 */
+	public static boolean anyBitsAreSet(long value, long bits)
+	{
+		return (value & bits) != 0L;
 	}
 
 	/**
 	 * Sets the bits of a value.
-	 * @param value		the value.
-	 * @param bits		the bits to set.
-	 * @return			the resulting number.
+	 * @param value the source value.
+	 * @param bits the setting bits.
+	 * @return the resulting bits.
 	 */
 	public static long setBits(long value, long bits)
 	{
@@ -48,9 +58,9 @@ public final class BitUtils
 
 	/**
 	 * Clears the bits of a value.
-	 * @param value		the value.
-	 * @param bits		the bits to clear.
-	 * @return			the resulting number.
+	 * @param value the source value.
+	 * @param bits the clearing bits.
+	 * @return the resulting bits.
 	 */
 	public static long clearBits(long value, long bits)
 	{
@@ -66,6 +76,17 @@ public final class BitUtils
 	public static int clearBits(int value, int bits)
 	{
 		return value & ~bits;
+	}
+
+	/**
+	 * Checks if bits are set in a value.
+	 * @param value		the value.
+	 * @param test		the testing bits.
+	 * @return			true if all of the bits set in test are set in value, false otherwise.
+	 */
+	public static boolean bitIsSet(long value, long test)
+	{
+		return (value & test) == test;
 	}
 
 	/**

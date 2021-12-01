@@ -35,6 +35,8 @@ import java.util.TimeZone;
 
 /**
  * HTTP Utilities.
+ * <p>All of the HTTP functions are <em>synchronous</em>. If you want to make them asynchronous,
+ * you will have to wire them up to your favorite asynchronous task library.
  * @author Matthew Tropiano
  */
 public final class HTTPUtils
@@ -894,7 +896,8 @@ public final class HTTPUtils
 		 */
 		public HTTPCookie sameSite(SameSiteMode mode)
 		{
-			flags.add("SameSite=" + mode.name().charAt(0) + mode.name().substring(1).toLowerCase());
+			String name = mode.name();
+			flags.add("SameSite=" + name.charAt(0) + name.substring(1).toLowerCase());
 			return this;
 		}
 

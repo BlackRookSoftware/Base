@@ -816,6 +816,7 @@ public final class AsyncFactory
 		@Override
 		public final T get() throws InterruptedException, ExecutionException
 		{
+			liveLockCheck();
 			waitForDone();
 			if (isCancelled())
 				throw new CancellationException("task was cancelled");
@@ -827,6 +828,7 @@ public final class AsyncFactory
 		@Override
 		public final T get(long time, TimeUnit unit) throws TimeoutException, InterruptedException, ExecutionException
 		{
+			liveLockCheck();
 			waitForDone(time, unit);
 			if (!isDone())
 				throw new TimeoutException("wait timed out");
@@ -841,16 +843,20 @@ public final class AsyncFactory
 		 * Attempts to return the result of this instance, making the calling thread wait for its completion.
 		 * <p>This is for convenience - this is like calling {@link #get()}, except it will only throw an
 		 * encapsulated {@link RuntimeException} with an exception that {@link #get()} would throw as a cause.
-		 * @return the result. Can be null if no result is returned.
+		 * @return the result. Can be null if no result is returned, or this was cancelled before the return.
 		 * @throws RuntimeException if a call to {@link #get()} instead of this would throw an exception.
 		 */
 		public final T result()
 		{
+			liveLockCheck();
 			try {
-				return get();
-			} catch (Exception e) {
-				throw new RuntimeException("exception on get", e);
+				waitForDone();
+			} catch (InterruptedException e) {
+				throw new RuntimeException("wait was interrupted", getException());
 			}
+			if (getException() != null)
+				throw new RuntimeException("exception on result", getException());
+			return finishedResult;
 		}
 	
 		/**
@@ -875,6 +881,13 @@ public final class AsyncFactory
 			}
 		}
 	
+		// Checks for livelocks.
+		private void liveLockCheck()
+		{
+			if (executor == Thread.currentThread())
+				throw new IllegalStateException("Attempt to make executing thread wait for this result.");
+		}
+		
 		/**
 		 * Executes this instance's callable payload.
 		 * @return the result from the execution.

@@ -42,6 +42,7 @@ public final class EnumUtils
 
 	/**
 	 * Turns a set of enums into a map of some kind of key to enum.
+	 * @param <C> the key type; must be {@link Comparable}.
 	 * @param <E> an Enum type.
 	 * @param enumClass the Enum class. 
 	 * @param keyProviderFunc the function that fetches the corresponding id to use for the provided enum value. First parameter is the ordinal from {@link Enum#ordinal()}.

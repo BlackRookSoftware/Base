@@ -22,14 +22,14 @@ public final class HTTP1Test
 		HTTP1.Reader clientReader = null;
 		
 		try {
-			socket = new Socket("www.google.com", 80);
+			socket = new Socket("mtrop.net", 80);
 			
 			clientWriter = new HTTP1.Writer(socket.getOutputStream());
 			clientReader = new HTTP1.Reader(socket.getInputStream());
 
 			// Send request.
 			clientWriter.writeRequestHeader("GET", "/", Version.HTTP11);
-			clientWriter.writeHeader("Host", "www.google.com");
+			clientWriter.writeHeader("Host", "mtrop.net");
 			clientWriter.writeHeader("Accept", "text/html");
 			clientWriter.writeHeader("User-Agent", "BlackRookHTTP1/1.0 (Java 11)");
 			clientWriter.writeHeader("Content-Length", "0");

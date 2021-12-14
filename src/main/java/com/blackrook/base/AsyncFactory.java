@@ -21,6 +21,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 /**
  * Factory for creating a thread pool that handles asynchronous tasks.
@@ -51,8 +52,12 @@ public final class AsyncFactory
 	// No Process Error Listeners
 	private static final ProcessStreamErrorListener[] NO_LISTENERS = new ProcessStreamErrorListener[0];
 
+
+	/** Process ids. */
+	private AtomicLong processId;
 	/** Thread pool. */
 	private ThreadPoolExecutor threadPool;
+	
 	
 	/**
 	 * Creates an AsyncFactory and new underlying thread pool with default values.
@@ -147,6 +152,7 @@ public final class AsyncFactory
 	 */
 	public AsyncFactory(ThreadPoolExecutor threadPool)
 	{
+		this.processId = new AtomicLong(0L);
 		this.threadPool = threadPool;
 	}
 
@@ -198,41 +204,28 @@ public final class AsyncFactory
 		final ProcessStreamErrorListener ... listeners
 	)
 	{
+		final long id = processId.getAndIncrement();
 		final OutputStream stdInPipe = process.getOutputStream();
 		final InputStream stdOutPipe = process.getInputStream();
 		final InputStream stdErrPipe = process.getErrorStream();
 		
 		// Standard In
-		if (stdin != null && stdInPipe != null) spawn(()->{
-			try {
-				relay(stdin, stdInPipe);
-			} catch (IOException e) {
-				for (int i = 0; i < listeners.length; i++)
-					listeners[i].onStreamError(ProcessStreamErrorListener.StreamType.STDIN, e);
-			} finally {
-				close(stdInPipe);
-			}
-		});
+		(new PipeInToOutThread(id + "-In", stdin, stdInPipe, (e) -> {
+			for (int i = 0; i < listeners.length; i++)
+				listeners[i].onStreamError(ProcessStreamErrorListener.StreamType.STDIN, e);
+		})).start();
 
 		// Standard Out
-		if (stdout != null && stdOutPipe != null) spawn(()->{
-			try {
-				relay(stdOutPipe, stdout);
-			} catch (IOException e) {
-				for (int i = 0; i < listeners.length; i++)
-					listeners[i].onStreamError(ProcessStreamErrorListener.StreamType.STDOUT, e);
-			}
-		});
+		(new PipeInToOutThread(id + "Out", stdOutPipe, stdout, (e) -> {
+			for (int i = 0; i < listeners.length; i++)
+				listeners[i].onStreamError(ProcessStreamErrorListener.StreamType.STDOUT, e);
+		})).start();
 		
 		// Standard Error
-		if (stderr != null && stdErrPipe != null) spawn(()->{
-			try {
-				relay(stdErrPipe, stderr);
-			} catch (IOException e) {
-				for (int i = 0; i < listeners.length; i++)
-					listeners[i].onStreamError(ProcessStreamErrorListener.StreamType.STDERR, e);
-			}
-		});
+		(new PipeInToOutThread(id + "Error", stdErrPipe, stderr, (e) -> {
+			for (int i = 0; i < listeners.length; i++)
+				listeners[i].onStreamError(ProcessStreamErrorListener.StreamType.STDERR, e);
+		})).start();
 		
 		Instance<Integer> out = new ProcessInstance(process);
 		threadPool.execute(out);
@@ -823,6 +816,7 @@ public final class AsyncFactory
 		@Override
 		public final T get() throws InterruptedException, ExecutionException
 		{
+			liveLockCheck();
 			waitForDone();
 			if (isCancelled())
 				throw new CancellationException("task was cancelled");
@@ -834,6 +828,7 @@ public final class AsyncFactory
 		@Override
 		public final T get(long time, TimeUnit unit) throws TimeoutException, InterruptedException, ExecutionException
 		{
+			liveLockCheck();
 			waitForDone(time, unit);
 			if (!isDone())
 				throw new TimeoutException("wait timed out");
@@ -848,16 +843,20 @@ public final class AsyncFactory
 		 * Attempts to return the result of this instance, making the calling thread wait for its completion.
 		 * <p>This is for convenience - this is like calling {@link #get()}, except it will only throw an
 		 * encapsulated {@link RuntimeException} with an exception that {@link #get()} would throw as a cause.
-		 * @return the result. Can be null if no result is returned.
+		 * @return the result. Can be null if no result is returned, or this was cancelled before the return.
 		 * @throws RuntimeException if a call to {@link #get()} instead of this would throw an exception.
 		 */
 		public final T result()
 		{
+			liveLockCheck();
 			try {
-				return get();
-			} catch (Exception e) {
-				throw new RuntimeException("exception on get", e);
+				waitForDone();
+			} catch (InterruptedException e) {
+				throw new RuntimeException("wait was interrupted", getException());
 			}
+			if (getException() != null)
+				throw new RuntimeException("exception on result", getException());
+			return finishedResult;
 		}
 	
 		/**
@@ -882,6 +881,13 @@ public final class AsyncFactory
 			}
 		}
 	
+		// Checks for livelocks.
+		private void liveLockCheck()
+		{
+			if (executor == Thread.currentThread())
+				throw new IllegalStateException("Attempt to make executing thread wait for this result.");
+		}
+		
 		/**
 		 * Executes this instance's callable payload.
 		 * @return the result from the execution.
@@ -916,6 +922,38 @@ public final class AsyncFactory
 			return out;
 		}
 		
+	}
+
+	/**
+	 * A thread that just pipes input to output.
+	 */
+	private static class PipeInToOutThread extends Thread
+	{
+		private InputStream in;
+		private OutputStream out;
+		private Consumer<IOException> exceptionConsumer;
+		
+		private PipeInToOutThread(String suffix, InputStream in, OutputStream out, Consumer<IOException> exceptionConsumer)
+		{
+			setDaemon(false);
+			setName("ProcessPipe-" + suffix);
+			this.in = in;
+			this.out = out;
+			this.exceptionConsumer = exceptionConsumer;
+		}
+		
+		@Override
+		public void run() 
+		{
+			try {
+				relay(in, out);
+			} catch (IOException e) {
+				exceptionConsumer.accept(e);
+			} finally {
+				close(in);
+				close(out);
+			}
+		}
 	}
 
 	/**

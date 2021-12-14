@@ -80,7 +80,7 @@ public final class ObjectUtils
 	{
 		if (obj == null)
 			return true;
-		else if (isArray(obj.getClass()))
+		else if (obj.getClass().isArray())
 			return Array.getLength(obj) == 0;
 		else if (obj instanceof Boolean)
 			return !((Boolean)obj);
@@ -94,11 +94,6 @@ public final class ObjectUtils
 			return ((Collection<?>)obj).isEmpty();
 		else
 			return false;
-	}
-
-	private static boolean isArray(Class<?> clazz)
-	{
-		return clazz.getName().startsWith("["); 
 	}
 
 }

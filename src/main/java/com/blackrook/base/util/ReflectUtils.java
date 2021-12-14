@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2020 Black Rook Software
+ * Copyright (c) 2019-2021 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -15,10 +15,13 @@ import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
@@ -51,7 +54,7 @@ public final class ReflectUtils
 	/** 
 	 * Hash of numerically-typed classes. 
 	 */
-	public static final HashSet<Class<?>> NUMERIC_TYPES_SET = new HashSet<Class<?>>()
+	public static final Set<Class<?>> NUMERIC_TYPES_SET = Collections.unmodifiableSet(new HashSet<Class<?>>()
 	{
 		private static final long serialVersionUID = -998955236861170734L;
 		{
@@ -69,12 +72,12 @@ public final class ReflectUtils
 			add(Double.TYPE);
 			add(Number.class);
 		}
-	};
+	});
 
 	/** 
 	 * Hash of primitive types to promoted/boxed classes. 
 	 */
-	public static final HashMap<Class<?>, Class<?>> PRIMITIVE_TO_CLASS_MAP = new HashMap<Class<?>, Class<?>>()
+	public static final Map<Class<?>, Class<?>> PRIMITIVE_TO_CLASS_MAP = Collections.unmodifiableMap(new HashMap<Class<?>, Class<?>>()
 	{
 		private static final long serialVersionUID = -2547995516963695295L;
 		{
@@ -88,12 +91,12 @@ public final class ReflectUtils
 			put(Long.TYPE, Long.class);
 			put(Double.TYPE, Double.class);
 		}
-	};
+	});
 
 	/** 
 	 * Hash of primitive types.
 	 */
-	public static final HashSet<Class<?>> PRIMITIVE_TYPES = new HashSet<Class<?>>()
+	public static final Set<Class<?>> PRIMITIVE_TYPES = Collections.unmodifiableSet(new HashSet<Class<?>>()
 	{
 		private static final long serialVersionUID = -1424251090783630151L;
 		{
@@ -107,7 +110,7 @@ public final class ReflectUtils
 			add(Long.TYPE);
 			add(Double.TYPE);
 		}
-	};
+	});
 
 	/**
 	 * Promotes a primitive class type to an autoboxed object type,
@@ -122,16 +125,6 @@ public final class ReflectUtils
 			return PRIMITIVE_TO_CLASS_MAP.get(clazz);
 		return clazz;
 	}
-	
-	/**
-	 * Tests if a class is actually an array type.
-	 * @param clazz the class to test.
-	 * @return true if so, false if not. 
-	 */
-	public static boolean isArray(Class<?> clazz)
-	{
-		return clazz.getName().startsWith("["); 
-	}
 
 	/**
 	 * Tests if an object is actually an array type.
@@ -140,7 +133,7 @@ public final class ReflectUtils
 	 */
 	public static boolean isArray(Object object)
 	{
-		return isArray(object.getClass()); 
+		return object.getClass().isArray();
 	}
 	
 	/**
@@ -150,7 +143,7 @@ public final class ReflectUtils
 	 */
 	public static int getArrayDimensions(Class<?> arrayType)
 	{
-		if (!isArray(arrayType))
+		if (!arrayType.isArray())
 			return 0;
 			
 		String cname = arrayType.getName();
@@ -486,26 +479,6 @@ public final class ReflectUtils
 			throw new RuntimeException(e);
 		} catch (IllegalAccessException e) {
 			throw new RuntimeException(e);
-		}
-	}
-
-	/**
-	 * Returns the enum instance of a class given class and name, or null if not a valid name.
-	 * If value is null, this returns null.
-	 * @param <T> the Enum object type.
-	 * @param value the value to search for.
-	 * @param enumClass the Enum class to inspect.
-	 * @return the enum value or null if the target does not exist.
-	 */
-	public static <T extends Enum<T>> T getEnumInstance(String value, Class<T> enumClass)
-	{
-		if (value == null)
-			return null;
-		
-		try {
-			return Enum.valueOf(enumClass, value);
-		} catch (IllegalArgumentException e) {
-			return null;
 		}
 	}
 

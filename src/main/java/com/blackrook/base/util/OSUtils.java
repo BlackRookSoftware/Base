@@ -5,12 +5,19 @@
  ******************************************************************************/
 package com.blackrook.base.util;
 
+import java.io.File;
+import java.io.IOException;
+import java.lang.ProcessBuilder.Redirect;
+import java.util.Objects;
+
 /**
  * Simple OS utility functions.
  * @author Matthew Tropiano
  */
 public final class OSUtils
 {
+	private static File NULL_FILE = null;
+	
 	/** Is this running on an x86 architecture? */
 	private static boolean IS_X86 = false;
 	/** Is this running on an x64 architecture? */
@@ -33,8 +40,10 @@ public final class OSUtils
 	private static boolean IS_WINDOWS_7 = false;
 	/** Are we using Windows 8? */
 	private static boolean IS_WINDOWS_8 = false;
-	/** Are we using Windows 8? */
+	/** Are we using Windows 10? */
 	private static boolean IS_WINDOWS_10 = false;
+	/** Are we using Windows 11? */
+	private static boolean IS_WINDOWS_11 = false;
 	/** Are we using Windows NT? */
 	private static boolean IS_WINDOWS_NT = false;
 	/** Are we using Windows 2003 (Server)? */
@@ -90,6 +99,7 @@ public final class OSUtils
 			IS_WINDOWS_7 = osName.contains(" 7");
 			IS_WINDOWS_8 = osName.contains(" 8");
 			IS_WINDOWS_10 = osName.contains(" 10");
+			IS_WINDOWS_11 = osName.contains(" 11");
 			IS_WIN32 = IS_X86;
 			IS_WIN64 = IS_X64;
 		}
@@ -123,6 +133,7 @@ public final class OSUtils
 		
 		WORK_DIR = System.getProperty("user.dir");
 		HOME_DIR = System.getProperty("user.home");
+		NULL_FILE = new File(IS_WINDOWS ? "NUL" : "/dev/null");
 	}
 
 	private OSUtils() {}
@@ -227,6 +238,14 @@ public final class OSUtils
 		return IS_WINDOWS_10;
 	}
 
+	/** 
+	 * @return true if we using Windows 11. 
+	 */
+	public static boolean isWindows11()
+	{
+		return IS_WINDOWS_11;
+	}
+
 	/** @return true if we using Windows 95/98. */
 	public static boolean isWindows9X()
 	{
@@ -295,5 +314,46 @@ public final class OSUtils
 	{
 		return HOME_DIR;
 	}
+	
+	/**
+	 * @return the "null" file pipe for this operating system.
+	 */
+	public static File getNullFile()
+	{
+		return NULL_FILE;
+	}
 
+	/**
+	 * Attempts to detect if an executable is present on the platform's PATH by name.
+	 * On Windows, this is done through the <code>where</code> command. On Unix-like systems, the <code>which</code> command. 
+	 * @param imageName the executable name.
+	 * @return true if so, false if not.
+	 * @throws NullPointerException if imageName is null.
+	 * @throws UnsupportedOperationException if a mechanism to search the PATH environment does not exist.
+	 */
+	public static boolean onPath(String imageName)
+	{
+		Objects.requireNonNull(imageName);
+		
+		try {
+			ProcessBuilder pb = (new ProcessBuilder())
+				.redirectInput(Redirect.from(NULL_FILE))
+				.redirectError(Redirect.appendTo(NULL_FILE))
+				.redirectOutput(Redirect.appendTo(NULL_FILE))
+			;
+			if (IS_WINDOWS)
+				pb.command("where", imageName);
+			else if (IS_OSX || IS_LINUX)
+				pb.command("which", imageName);
+			else
+				throw new UnsupportedOperationException("OS does not have \"where\" or \"which\" available for PATH search!");
+			int status = pb.start().waitFor();
+			return status == 0;
+		} catch (IOException e) {
+			throw new UnsupportedOperationException("OS does not have \"where\" or \"which\" available for PATH search!");
+		} catch (InterruptedException e) {
+			return false; // Shouldn't happen.
+		}
+	}
+	
 }

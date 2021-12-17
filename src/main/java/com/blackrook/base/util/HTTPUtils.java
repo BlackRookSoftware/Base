@@ -42,6 +42,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * HTTP Utilities.
@@ -70,7 +71,7 @@ public final class HTTPUtils
 	public static final String HTTP_METHOD_PUT = "PUT";
 
 	/** Thread pool for async requests. */
-	private static final ThreadPoolExecutor HTTP_THREAD_POOL = new HTTPThreadPoolExecutor();
+	private static final AtomicReference<ThreadPoolExecutor> HTTP_THREAD_POOL = new AtomicReference<ThreadPoolExecutor>(null);
 	
 	// Not instantiable.
 	private HTTPUtils() {}
@@ -87,7 +88,7 @@ public final class HTTPUtils
 	});
 	
 	/**
-	 * The executor to use for sending async requests.
+	 * The default executor to use for sending async requests.
 	 */
 	private static class HTTPThreadPoolExecutor extends ThreadPoolExecutor
 	{
@@ -112,6 +113,298 @@ public final class HTTPUtils
 		}
 	}
 	
+	/**
+	 * A single instance of a spawned, asynchronous executable task.
+	 * Note that this class is a type of {@link RunnableFuture} - this can be used in places
+	 * that {@link Future}s can also be used.
+	 * @param <T> the result type.
+	 */
+	public static abstract class HTTPRequestFuture<T> implements RunnableFuture<T>
+	{
+		// Source request.
+		protected HTTPRequest request;
+		protected HTTPResponse response;
+		protected AtomicBoolean cancelSwitch;
+	
+		// Locks
+		private Object waitMutex;
+	
+		// State
+		private Thread executor;
+		private boolean done;
+		private boolean running;
+		private Throwable exception;
+		private T finishedResult;
+	
+		private HTTPRequestFuture(HTTPRequest request)
+		{
+			this.request = request;
+			this.response = null;
+			this.cancelSwitch = new AtomicBoolean(false);
+			this.waitMutex = new Object();
+	
+			this.executor = null;
+			this.done = false;
+			this.running = false;
+			this.exception = null;
+			this.finishedResult = null;
+		}
+		
+		@Override
+		public final void run()
+		{
+			executor = Thread.currentThread();
+			running = true;
+	
+			try {
+				finishedResult = execute();
+			} catch (Throwable e) {
+				exception = e;
+			}
+			
+			running = false;
+			done = true;
+			executor = null;
+			synchronized (waitMutex)
+			{
+				waitMutex.notifyAll();
+			}
+		}
+	
+		/**
+		 * Checks if this task instance is being worked on by a thread.
+		 * @return true if so, false if not.
+		 */
+		public final boolean isRunning()
+		{
+			return running;
+		}
+	
+		@Override
+		public final boolean isDone()
+		{
+			return done;
+		}
+	
+		/**
+		 * Gets the thread that is currently executing this future.
+		 * If this is done or waiting for execution, this returns null.
+		 * @return the executor thread, or null.
+		 */
+		public final Thread getExecutor()
+		{
+			return executor;
+		}
+		
+		/**
+		 * Makes the calling thread wait indefinitely for this task instance's completion.
+		 * @throws InterruptedException if the current thread was interrupted while waiting.
+		 */
+		public final void waitForDone() throws InterruptedException
+		{
+			while (!isDone())
+			{
+				synchronized (waitMutex)
+				{
+					waitMutex.wait();
+				}
+			}
+		}
+	
+		/**
+		 * Makes the calling thread wait for this task instance's completion for, at most, the given interval of time.
+		 * @param time the time to wait.
+		 * @param unit the time unit of the timeout argument.
+		 * @throws InterruptedException if the current thread was interrupted while waiting.
+		 */
+		public final void waitForDone(long time, TimeUnit unit) throws InterruptedException
+		{
+			if (!isDone())
+			{
+				synchronized (waitMutex)
+				{
+					unit.timedWait(waitMutex, time);
+				}
+			}
+		}
+	
+		/**
+		 * Gets the exception thrown as a result of this instance completing, making the calling thread wait for its completion.
+		 * @return the exception thrown by the encapsulated task, or null if no exception.
+		 */
+		public final Throwable getException()
+		{
+			if (!isDone())
+				join();
+			return exception;
+		}
+	
+		@Override
+		public final T get() throws InterruptedException, ExecutionException
+		{
+			liveLockCheck();
+			waitForDone();
+			if (isCancelled())
+				throw new CancellationException("task was cancelled");
+			if (getException() != null)
+				throw new ExecutionException(getException());
+			return finishedResult;
+		}
+	
+		@Override
+		public final T get(long time, TimeUnit unit) throws TimeoutException, InterruptedException, ExecutionException
+		{
+			liveLockCheck();
+			waitForDone(time, unit);
+			if (!isDone())
+				throw new TimeoutException("wait timed out");
+			if (isCancelled())
+				throw new CancellationException("task was cancelled");
+			if (getException() != null)
+				throw new ExecutionException(getException());
+			return finishedResult;
+		}
+	
+		/**
+		 * Attempts to return the result of this instance, making the calling thread wait for its completion.
+		 * <p>This is for convenience - this is like calling {@link #get()}, except it will only throw an
+		 * encapsulated {@link RuntimeException} with an exception that {@link #get()} would throw as a cause.
+		 * @return the result. Can be null if no result is returned, or this was cancelled before the return.
+		 * @throws RuntimeException if a call to {@link #get()} instead of this would throw an exception.
+		 */
+		public final T result()
+		{
+			liveLockCheck();
+			try {
+				waitForDone();
+			} catch (InterruptedException e) {
+				throw new RuntimeException("wait was interrupted", getException());
+			}
+			if (getException() != null)
+				throw new RuntimeException("exception on result", getException());
+			return finishedResult;
+		}
+	
+		/**
+		 * Attempts to return the result of this instance, without waiting for its completion.
+		 * <p>If {@link #isDone()} is false, this is guaranteed to return <code>null</code>.
+		 * @return the current result, or <code>null</code> if not finished.
+		 */
+		public final T resultNonBlocking()
+		{
+			return finishedResult;
+		}
+	
+		/**
+		 * Makes the calling thread wait until this task has finished, returning nothing.
+		 */
+		public final void join()
+		{
+			try {
+				result();
+			} catch (Exception e) {
+				// Eat exception.
+			}
+		}
+	
+		/**
+		 * Gets the response encapsulation from a call, waiting for the call to be in a "done" state.
+		 * <p> If the call errored out or was cancelled before the request was sent, this will be null.
+		 * <p> The response may be open, if this call is supposed to return an open response to be read by the application.
+		 * @return the response, or null if no response was captured due to an error.
+		 * @see #join()
+		 * @see #getException()
+		 * @see #result()
+		 */
+		public final HTTPResponse getResponse()
+		{
+			if (!isDone())
+				join();
+			return response;
+		}
+		
+	    /**
+	     * Convenience method for: <code>cancel(false)</code>.
+	     * @return {@code false} if the task could not be cancelled,
+	     * typically because it has already completed normally;
+	     * {@code true} otherwise
+	     */
+		public final boolean cancel()
+		{
+			return cancel(false);
+		}
+	
+		@Override
+		public final boolean cancel(boolean mayInterruptIfRunning)
+		{
+			if (isDone())
+			{
+				return false;
+			}
+			else
+			{
+				if (mayInterruptIfRunning && executor != null)
+					executor.interrupt();
+				cancelSwitch.set(true);
+				return true;
+			}
+		}
+	
+		@Override
+		public final boolean isCancelled() 
+		{
+			return cancelSwitch.get();
+		}
+		
+		// Checks for livelocks.
+		private void liveLockCheck()
+		{
+			if (executor == Thread.currentThread())
+				throw new IllegalStateException("Attempt to make executing thread wait for this result.");
+		}
+		
+		/**
+		 * Executes this instance's callable payload.
+		 * @return the result from the execution.
+		 * @throws Throwable for any exception that may occur.
+		 */
+		protected abstract T execute() throws Throwable;
+	
+		/** Sends request and gets a response. */
+		private static class Response extends HTTPRequestFuture<HTTPResponse>
+		{
+			private Response(HTTPRequest request)
+			{
+				super(request);
+			}
+	
+			@Override
+			protected HTTPResponse execute() throws Throwable
+			{
+				return response = request.send(cancelSwitch);
+			}
+		}
+		
+		/** Sends request and gets an object. */
+		private static class ObjectResponse<T> extends HTTPRequestFuture<T>
+		{
+			private HTTPReader<T> reader;
+			
+			private ObjectResponse(HTTPRequest request, HTTPReader<T> reader)
+			{
+				super(request);
+				this.reader = reader;
+			}
+	
+			@Override
+			protected T execute() throws Throwable
+			{
+				response = request.send(cancelSwitch);
+				return response.read(reader, cancelSwitch);
+			}
+		}
+	}
+
 	/**
 	 * Interface for monitoring change in a data transfer.
 	 */
@@ -1526,6 +1819,7 @@ public final class HTTPUtils
 		 */
 		public HTTPRequest headers(HTTPHeaders headers)
 		{
+			Objects.requireNonNull(headers);
 			this.headers = headers;
 			return this;
 		}
@@ -1538,6 +1832,7 @@ public final class HTTPUtils
 		 */
 		public HTTPRequest addHeaders(HTTPHeaders headers)
 		{
+			Objects.requireNonNull(headers);
 			this.headers.merge(headers);
 			return this;
 		}
@@ -1562,6 +1857,7 @@ public final class HTTPUtils
 		 */
 		public HTTPRequest parameters(HTTPParameters parameters)
 		{
+			Objects.requireNonNull(parameters);
 			this.parameters = parameters;
 			return this;
 		}
@@ -1574,6 +1870,7 @@ public final class HTTPUtils
 		 */
 		public HTTPRequest addParameters(HTTPParameters parameters)
 		{
+			Objects.requireNonNull(parameters);
 			this.parameters.merge(parameters);
 			return this;
 		}
@@ -1751,7 +2048,7 @@ public final class HTTPUtils
 		public HTTPRequestFuture<HTTPResponse> sendAsync()
 		{
 			HTTPRequestFuture<HTTPResponse> out = new HTTPRequestFuture.Response(this);
-			HTTP_THREAD_POOL.execute(out);
+			fetchExecutor().execute(out);
 			return out;
 		}
 
@@ -1780,304 +2077,12 @@ public final class HTTPUtils
 		public <T> HTTPRequestFuture<T> sendAsync(HTTPReader<T> reader)
 		{
 			HTTPRequestFuture<T> out = new HTTPRequestFuture.ObjectResponse<T>(this, reader);
-			HTTP_THREAD_POOL.execute(out);
+			fetchExecutor().execute(out);
 			return out;
 		}
 
 	}
 	
-	/**
-	 * A single instance of a spawned, asynchronous executable task.
-	 * Note that this class is a type of {@link RunnableFuture} - this can be used in places
-	 * that {@link Future}s can also be used.
-	 * @param <T> the result type.
-	 */
-	public static abstract class HTTPRequestFuture<T> implements RunnableFuture<T>
-	{
-		// Source request.
-		protected HTTPRequest request;
-		protected HTTPResponse response;
-		protected AtomicBoolean cancelSwitch;
-
-		// Locks
-		private Object waitMutex;
-
-		// State
-		private Thread executor;
-		private boolean done;
-		private boolean running;
-		private Throwable exception;
-		private T finishedResult;
-
-		private HTTPRequestFuture(HTTPRequest request)
-		{
-			this.request = request;
-			this.response = null;
-			this.cancelSwitch = new AtomicBoolean(false);
-			this.waitMutex = new Object();
-
-			this.executor = null;
-			this.done = false;
-			this.running = false;
-			this.exception = null;
-			this.finishedResult = null;
-		}
-		
-		@Override
-		public final void run()
-		{
-			executor = Thread.currentThread();
-			running = true;
-
-			try {
-				finishedResult = execute();
-			} catch (Throwable e) {
-				exception = e;
-			}
-			
-			running = false;
-			done = true;
-			executor = null;
-			synchronized (waitMutex)
-			{
-				waitMutex.notifyAll();
-			}
-		}
-	
-		/**
-		 * Checks if this task instance is being worked on by a thread.
-		 * @return true if so, false if not.
-		 */
-		public final boolean isRunning()
-		{
-			return running;
-		}
-	
-		@Override
-		public final boolean isDone()
-		{
-			return done;
-		}
-	
-		/**
-		 * Gets the thread that is currently executing this future.
-		 * If this is done or waiting for execution, this returns null.
-		 * @return the executor thread, or null.
-		 */
-		public final Thread getExecutor()
-		{
-			return executor;
-		}
-		
-		/**
-		 * Makes the calling thread wait indefinitely for this task instance's completion.
-		 * @throws InterruptedException if the current thread was interrupted while waiting.
-		 */
-		public final void waitForDone() throws InterruptedException
-		{
-			while (!isDone())
-			{
-				synchronized (waitMutex)
-				{
-					waitMutex.wait();
-				}
-			}
-		}
-	
-		/**
-		 * Makes the calling thread wait for this task instance's completion for, at most, the given interval of time.
-		 * @param time the time to wait.
-		 * @param unit the time unit of the timeout argument.
-		 * @throws InterruptedException if the current thread was interrupted while waiting.
-		 */
-		public final void waitForDone(long time, TimeUnit unit) throws InterruptedException
-		{
-			if (!isDone())
-			{
-				synchronized (waitMutex)
-				{
-					unit.timedWait(waitMutex, time);
-				}
-			}
-		}
-	
-		/**
-		 * Gets the exception thrown as a result of this instance completing, making the calling thread wait for its completion.
-		 * @return the exception thrown by the encapsulated task, or null if no exception.
-		 */
-		public final Throwable getException()
-		{
-			if (!isDone())
-				join();
-			return exception;
-		}
-	
-		@Override
-		public final T get() throws InterruptedException, ExecutionException
-		{
-			liveLockCheck();
-			waitForDone();
-			if (isCancelled())
-				throw new CancellationException("task was cancelled");
-			if (getException() != null)
-				throw new ExecutionException(getException());
-			return finishedResult;
-		}
-	
-		@Override
-		public final T get(long time, TimeUnit unit) throws TimeoutException, InterruptedException, ExecutionException
-		{
-			liveLockCheck();
-			waitForDone(time, unit);
-			if (!isDone())
-				throw new TimeoutException("wait timed out");
-			if (isCancelled())
-				throw new CancellationException("task was cancelled");
-			if (getException() != null)
-				throw new ExecutionException(getException());
-			return finishedResult;
-		}
-	
-		/**
-		 * Attempts to return the result of this instance, making the calling thread wait for its completion.
-		 * <p>This is for convenience - this is like calling {@link #get()}, except it will only throw an
-		 * encapsulated {@link RuntimeException} with an exception that {@link #get()} would throw as a cause.
-		 * @return the result. Can be null if no result is returned, or this was cancelled before the return.
-		 * @throws RuntimeException if a call to {@link #get()} instead of this would throw an exception.
-		 */
-		public final T result()
-		{
-			liveLockCheck();
-			try {
-				waitForDone();
-			} catch (InterruptedException e) {
-				throw new RuntimeException("wait was interrupted", getException());
-			}
-			if (getException() != null)
-				throw new RuntimeException("exception on result", getException());
-			return finishedResult;
-		}
-	
-		/**
-		 * Attempts to return the result of this instance, without waiting for its completion.
-		 * <p>If {@link #isDone()} is false, this is guaranteed to return <code>null</code>.
-		 * @return the current result, or <code>null</code> if not finished.
-		 */
-		public final T resultNonBlocking()
-		{
-			return finishedResult;
-		}
-	
-		/**
-		 * Makes the calling thread wait until this task has finished, returning nothing.
-		 */
-		public final void join()
-		{
-			try {
-				result();
-			} catch (Exception e) {
-				// Eat exception.
-			}
-		}
-	
-		/**
-		 * Gets the response encapsulation from a call, waiting for the call to be in a "done" state.
-		 * <p> If the call errored out or was cancelled before the request was sent, this will be null.
-		 * <p> The response may be open, if this call is supposed to return an open response to be read by the application.
-		 * @return the response, or null if no response was captured due to an error.
-		 * @see #join()
-		 * @see #getException()
-		 * @see #result()
-		 */
-		public final HTTPResponse getResponse()
-		{
-			if (!isDone())
-				join();
-			return response;
-		}
-		
-	    /**
-	     * Convenience method for: <code>cancel(false)</code>.
-	     * @return {@code false} if the task could not be cancelled,
-	     * typically because it has already completed normally;
-	     * {@code true} otherwise
-	     */
-		public final boolean cancel()
-		{
-			return cancel(false);
-		}
-
-		@Override
-		public final boolean cancel(boolean mayInterruptIfRunning)
-		{
-			if (isDone())
-			{
-				return false;
-			}
-			else
-			{
-				if (mayInterruptIfRunning && executor != null)
-					executor.interrupt();
-				cancelSwitch.set(true);
-				return true;
-			}
-		}
-
-		@Override
-		public final boolean isCancelled() 
-		{
-			return cancelSwitch.get();
-		}
-		
-		// Checks for livelocks.
-		private void liveLockCheck()
-		{
-			if (executor == Thread.currentThread())
-				throw new IllegalStateException("Attempt to make executing thread wait for this result.");
-		}
-		
-		/**
-		 * Executes this instance's callable payload.
-		 * @return the result from the execution.
-		 * @throws Throwable for any exception that may occur.
-		 */
-		protected abstract T execute() throws Throwable;
-
-		/** Sends request and gets a response. */
-		private static class Response extends HTTPRequestFuture<HTTPResponse>
-		{
-			private Response(HTTPRequest request)
-			{
-				super(request);
-			}
-
-			@Override
-			protected HTTPResponse execute() throws Throwable
-			{
-				return response = request.send(cancelSwitch);
-			}
-		}
-		
-		/** Sends request and gets an object. */
-		private static class ObjectResponse<T> extends HTTPRequestFuture<T>
-		{
-			private HTTPReader<T> reader;
-			
-			private ObjectResponse(HTTPRequest request, HTTPReader<T> reader)
-			{
-				super(request);
-				this.reader = reader;
-			}
-
-			@Override
-			protected T execute() throws Throwable
-			{
-				response = request.send(cancelSwitch);
-				return response.read(reader, cancelSwitch);
-			}
-		}
-	}
-
 	/**
 	 * Makes an HTTP-acceptable ISO date string from a Date.
 	 * @param date the date to format.
@@ -2425,7 +2430,33 @@ public final class HTTPUtils
 		}
 	}
 	
+	/**
+	 * Sets the ThreadPoolExecutor to use for asynchronous requests.
+	 * @param executor the thread pool executor to use for async request handling.
+	 */
+	public static void setAsyncExecutor(ThreadPoolExecutor executor)
+	{
+		synchronized (HTTP_THREAD_POOL)
+		{
+			HTTP_THREAD_POOL.set(executor);
+		}
+	}
 		
+	// Fetches or creates the thread executor.
+	private static ThreadPoolExecutor fetchExecutor()
+	{
+		ThreadPoolExecutor out;
+		if ((out = HTTP_THREAD_POOL.get()) != null)
+			return out;
+		synchronized (HTTP_THREAD_POOL)
+		{
+			if ((out = HTTP_THREAD_POOL.get()) != null)
+				return out;
+			setAsyncExecutor(out = new HTTPThreadPoolExecutor());
+		}
+		return out;
+	}
+
 	private static final char[] HEX_NYBBLE = "0123456789ABCDEF".toCharArray();
 
 	private static void writePercentChar(StringBuilder target, byte b)

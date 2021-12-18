@@ -115,6 +115,7 @@ public abstract class InstancedFuture<T> implements RunnableFuture<T>
 	{
 		while (!isDone())
 		{
+			liveLockCheck();
 			synchronized (waitMutex)
 			{
 				waitMutex.wait();
@@ -132,6 +133,7 @@ public abstract class InstancedFuture<T> implements RunnableFuture<T>
 	{
 		if (!isDone())
 		{
+			liveLockCheck();
 			synchronized (waitMutex)
 			{
 				unit.timedWait(waitMutex, time);
@@ -145,8 +147,7 @@ public abstract class InstancedFuture<T> implements RunnableFuture<T>
 	 */
 	public final Throwable getException()
 	{
-		if (!isDone())
-			join();
+		join();
 		return exception;
 	}
 
@@ -179,26 +180,22 @@ public abstract class InstancedFuture<T> implements RunnableFuture<T>
 	/**
 	 * Performs a {@link #get()} and on success, calls the success function.
 	 * If an exception would have happened, the success function is not called.
-	 * @param <R> the return type after the function.
-	 * @param onSuccess the function to call on success with the result object, returning the return object.
+	 * @param <R> the return type after the function call.
+	 * @param onSuccess the function to call on success with the result object, returning the return object. 
+	 * 		If null when this would be called, this returns null.
 	 * @return the result from the success function, or null if an exception happened.
 	 */
 	public final <R> R getAndThen(Function<T, R> onSuccess)
 	{
-		try {
-			return onSuccess.apply(get());
-		} catch (Exception e) {
-			// Do nothing.
-			return null;
-		}
+		return getAndThen(onSuccess, null);
 	}
 	
 	/**
-	 * Performs a {@link #get()} and on success, calls the success function.
-	 * If an exception would have happened, the success function is not called, and the exception function is called.
+	 * Performs a {@link #get()} and on success, calls the success function, or calls the exception function on an exception.
 	 * @param <R> the return type after the function.
-	 * @param onSuccess the function to call on success with the result object, returning the return object.
-	 * @param onException the function to call on exception.
+	 * @param onSuccess the function to call on success with the result object, returning the return object. 
+	 * 		If null when this would be called, this returns null.
+	 * @param onException the function to call on exception. If null when this would be called, this returns null.
 	 * @return the result from the success function, or the result from the exception function if an exception happened.
 	 */
 	public final <R> R getAndThen(Function<T, R> onSuccess, Function<Throwable, R> onException)
@@ -206,7 +203,59 @@ public abstract class InstancedFuture<T> implements RunnableFuture<T>
 		try {
 			return onSuccess.apply(get());
 		} catch (Exception e) {
-			return onException.apply(exception);
+			return onException != null ? onException.apply(exception) : null;
+		}
+	}
+	
+	/**
+	 * Performs a {@link #get()} and on success, calls the success function.
+	 * If an exception would have happened, the success function is not called.
+	 * @param <R> the return type after the function call.
+	 * @param time the maximum time to wait.
+	 * @param unit the time unit of the timeout argument.
+	 * @param onSuccess the function to call on success with the result object, returning the return object. 
+	 * 		If null when this would be called, this returns null.
+	 * @return the result from the success function, or null if an exception happened or a timeout occurred.
+	 */
+	public final <R> R getAndThen(long time, TimeUnit unit, Function<T, R> onSuccess)
+	{
+		return getAndThen(time, unit, onSuccess, null, null);
+	}
+
+	/**
+	 * Performs a {@link #get()} and on success, calls the success function.
+	 * If an exception would have happened, the success function is not called.
+	 * @param <R> the return type after the function call.
+	 * @param time the maximum time to wait.
+	 * @param unit the time unit of the timeout argument.
+	 * @param onSuccess the function to call on success with the result object, returning the return object. 
+	 * 		If null when this would be called, this returns null.
+	 * @param onTimeout the function to call on wait timeout. First Parameter is the timeout in milliseconds. If null when this would be called, this returns null.
+	 * @return the result from the success function, or null if an exception happened.
+	 */
+	public final <R> R getAndThen(long time, TimeUnit unit, Function<T, R> onSuccess, Function<Long, R> onTimeout)
+	{
+		return getAndThen(time, unit, onSuccess, onTimeout, null);
+	}
+
+	/**
+	 * Performs a {@link #get()} and on success, calls the success function, or calls the exception function on an exception.
+	 * @param <R> the return type after the function.
+     * @param time the maximum time to wait.
+     * @param unit the time unit of the timeout argument.
+	 * @param onSuccess the function to call on success with the result object, returning the return object.
+	 * @param onTimeout the function to call on wait timeout. First Parameter is the timeout in milliseconds. If null when this would be called, this returns null.
+	 * @param onException the function to call on exception. If null when this would be called, this returns null.
+	 * @return the result from the success function, or the result from the exception function if an exception happened.
+	 */
+	public final <R> R getAndThen(long time, TimeUnit unit, Function<T, R> onSuccess, Function<Long, R> onTimeout, Function<Throwable, R> onException)
+	{
+		try {
+			return onSuccess != null ? onSuccess.apply(get(time, unit)) : null;
+		} catch (TimeoutException e) {
+			return onTimeout != null ? onTimeout.apply(TimeUnit.MILLISECONDS.convert(time, unit)) : null;
+		} catch (Exception e) {
+			return onException != null ? onException.apply(exception) : null;
 		}
 	}
 	
@@ -243,12 +292,13 @@ public abstract class InstancedFuture<T> implements RunnableFuture<T>
 
 	/**
 	 * Makes the calling thread wait until this task has finished, returning nothing.
+	 * This differs from {@link #waitForDone()} such that it eats a potential {@link InterruptedException}.
 	 * @throws IllegalStateException if the thread processing this future calls this method.
 	 */
 	public final void join()
 	{
 		try {
-			result();
+			waitForDone();
 		} catch (Exception e) {
 			// Eat exception.
 		}

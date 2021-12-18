@@ -10,7 +10,7 @@ public final class HTTPUtilsTest
 {
 	public static void main(String[] args) throws InterruptedException, ExecutionException 
 	{
-		HTTPRequestFuture<String> content = HTTPRequest.get("https://google.com").sendAsync(HTTPReader.STRING_CONTENT_READER);
+		HTTPRequestFuture<String> content = HTTPRequest.get("http://mtrop.net").sendAsync(HTTPReader.STRING_CONTENT_READER);
 		HTTPRequestFuture<String> content2 = HTTPRequest.get("https://blackrooksoftware.github.io/").sendAsync(HTTPReader.STRING_CONTENT_READER);
 		System.out.println("Fetching....");
 		System.out.println(content.getResponse().getStatusCode() + ": " + content.result());

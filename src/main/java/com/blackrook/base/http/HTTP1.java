@@ -39,18 +39,18 @@ public final class HTTP1
 	private static final String HEXALPHABET = "0123456789ABCDEF";
 	private static final byte[] CRLF = "\r\n".getBytes(ASCII);
 
-	private static final char[] CHARS_ILLEGAL_TOKEN = apply("0123456789 \",:;,=>?@[]{}\\".toCharArray(), (a)->Arrays.sort(a));
-	private static final char[] CHARS_METHOD = apply("ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray(), (a)->Arrays.sort(a));
-	private static final char[] CHARS_URI = apply("!#$%&/;=?~abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray(), (a)->Arrays.sort(a));
-	private static final char[] CHARS_VERSION = apply("10./HTP".toCharArray(), (a)->Arrays.sort(a));
-	private static final char[] CHARS_STATUS_CODE = apply("0123456789".toCharArray(), (a)->Arrays.sort(a));
-	private static final char[] CHARS_HEADER_NAME = apply("0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".toCharArray(), (a)->Arrays.sort(a));
+	private static final char[] CHARS_ILLEGAL_TOKEN = apply("0123456789 \",:;,=>?@[]{}\\".toCharArray(), (a) -> Arrays.sort(a));
+	private static final char[] CHARS_METHOD = apply("ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray(), (a) -> Arrays.sort(a));
+	private static final char[] CHARS_URI = apply("!#$%&/;=?~abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray(), (a) -> Arrays.sort(a));
+	private static final char[] CHARS_VERSION = apply("10./HTP".toCharArray(), (a) -> Arrays.sort(a));
+	private static final char[] CHARS_STATUS_CODE = apply("0123456789".toCharArray(), (a) -> Arrays.sort(a));
+	private static final char[] CHARS_HEADER_NAME = apply("0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".toCharArray(), (a) -> Arrays.sort(a));
 
-	private static final ThreadLocal<byte[]> BUFFER = ThreadLocal.withInitial(()->new byte[4096]);
-	private static final ThreadLocal<ByteBuffer> BYTEBUFFER = ThreadLocal.withInitial(()->ByteBuffer.allocate(2048));
-	private static final ThreadLocal<CharBuffer> CHARBUFFER = ThreadLocal.withInitial(()->CharBuffer.allocate(2048));
-	private static final ThreadLocal<StringBuilder> STRINGBUILDER = ThreadLocal.withInitial(()->new StringBuilder(128));
-	private static final ThreadLocal<SimpleDateFormat> ISO_DATE = ThreadLocal.withInitial(()->
+	private static final ThreadLocal<byte[]> BUFFER = ThreadLocal.withInitial(() -> new byte[4096]);
+	private static final ThreadLocal<ByteBuffer> BYTEBUFFER = ThreadLocal.withInitial(() -> ByteBuffer.allocate(2048));
+	private static final ThreadLocal<CharBuffer> CHARBUFFER = ThreadLocal.withInitial(() -> CharBuffer.allocate(2048));
+	private static final ThreadLocal<StringBuilder> STRINGBUILDER = ThreadLocal.withInitial(() -> new StringBuilder(128));
+	private static final ThreadLocal<SimpleDateFormat> ISO_DATE = ThreadLocal.withInitial(() -> 
 	{
 		SimpleDateFormat out = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
 		out.setTimeZone(TimeZone.getTimeZone("GMT"));
@@ -92,7 +92,7 @@ public final class HTTP1
 		HTTP11("HTTP/1.1"),
 		UNKNOWN("UNKNOWN");
 
-		private static final Map<String, Version> VERSION_STRING_MAP = apply(new HashMap<>(1, 1f), (m)->
+		private static final Map<String, Version> VERSION_STRING_MAP = apply(new HashMap<>(1, 1f), (m) -> 
 		{
 			for (Version v : values())
 				m.put(v.getVersionString(), v);

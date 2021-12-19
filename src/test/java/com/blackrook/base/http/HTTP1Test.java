@@ -3,13 +3,12 @@
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
-package com.blackrook.base;
+package com.blackrook.base.http;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.Socket;
 
-import com.blackrook.base.http.HTTP1;
 import com.blackrook.base.http.HTTP1.Version;
 import com.blackrook.base.util.IOUtils;
 

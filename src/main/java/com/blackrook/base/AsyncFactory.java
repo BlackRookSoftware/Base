@@ -32,13 +32,13 @@ import java.util.function.Consumer;
 public final class AsyncFactory
 {
 	/** Default amount of core threads. */
-	public static final int DEFAULT_CORE_SIZE = 2;
+	public static final int DEFAULT_CORE_SIZE = 0;
 	
 	/** Default amount of max threads. */
 	public static final int DEFAULT_MAX_SIZE = 20;
 
 	/** Default keepalive time. */
-	public static final long DEFAULT_KEEPALIVE_TIME = 5;
+	public static final long DEFAULT_KEEPALIVE_TIME = 30L;
 
 	/** Default keepalive time unit. */
 	public static final TimeUnit DEFAULT_KEEPALIVE_TIMEUNIT = TimeUnit.SECONDS;

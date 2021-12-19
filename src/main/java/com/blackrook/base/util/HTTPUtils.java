@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -510,6 +511,11 @@ public final class HTTPUtils
 		 * @param max the maximum amount/target in bytes, if any.
 		 */
 		void onProgressChange(long current, Long max);
+		
+		/**
+		 * A transfer monitor that does nothing.
+		 */
+		static TransferMonitor NULL_MONITOR = (current, max) -> {};
 	}
 	
 	/**
@@ -520,36 +526,11 @@ public final class HTTPUtils
 	public interface HTTPReader<R>
 	{
 		/**
-		 * Called to read the HTTP response from an HTTP call.
-		 * <p> The policy of this reader is to keep reading from the open response stream until
-		 * the end is reached.
-		 * @param response the response object.
-		 * @return the returned decoded object.
-		 * @throws IOException if a read error occurs.
-		 */
-		default R onHTTPResponse(HTTPResponse response) throws IOException
-		{
-			return onHTTPResponse(response, new AtomicBoolean(false));
-		}
-		
-		/**
-		 * Called to read the HTTP response from an HTTP call.
-		 * <p> The policy of this reader is to keep reading from the open response stream until
-		 * the end is reached or until the cancel switch is set to true (from outside the reading
-		 * mechanism). There is no policy for what to return upon canceling this reader's read.
-		 * @param response the response object.
-		 * @param cancelSwitch the cancel switch. Set to <code>true</code> to attempt to cancel.
-		 * @return the returned decoded object.
-		 * @throws IOException if a read error occurs.
-		 */
-		R onHTTPResponse(HTTPResponse response, AtomicBoolean cancelSwitch) throws IOException;
-		
-		/**
 		 * An HTTP Reader that reads byte content and returns a decoded String.
 		 * Gets the string contents of the response, decoded using the response's charset.
 		 * <p> If the read is cancelled, this returns null.
 		 */
-		static HTTPReader<String> STRING_CONTENT_READER = (response, cancelSwitch) ->
+		static HTTPReader<String> STRING_CONTENT_READER = (response, cancelSwitch, monitor) ->
 		{
 			String charset;
 			if ((charset = response.getCharset()) == null)
@@ -567,17 +548,118 @@ public final class HTTPUtils
 		};
 		
 		/**
-		 * An HTTP Reader that reads byte content and returns a decoded String.
-		 * Gets the string contents of the response, decoded using the response's charset.
+		 * An HTTP Reader that reads the response body as byte content and returns a byte array.
 		 * <p> If the read is cancelled, this returns null.
 		 */
-		static HTTPReader<byte[]> BYTE_CONTENT_READER = (response, cancelSwitch) ->
+		static HTTPReader<byte[]> BYTE_CONTENT_READER = (response, cancelSwitch, monitor) ->
 		{
 			ByteArrayOutputStream bos = new ByteArrayOutputStream();
-			long length = response.getLength() != null ? response.getLength() : -1L;
-			relay(response.getContentStream(), bos, 8192, length, cancelSwitch, null);
+			relay(response.getContentStream(), bos, 8192, response.getLength(), cancelSwitch, monitor);
 			return cancelSwitch.get() ? null : bos.toByteArray();
 		};
+		
+		/**
+		 * An HTTP Reader that reads byte content and puts it in a temporary file.
+		 * Gets the string contents of the response, decoded using the response's charset.
+		 * <p> If the read is cancelled, the file is closed and deleted, and this returns null.
+		 */
+		static HTTPReader<File> TEMPORARY_FILE_READER = (response, cancelSwitch, monitor) ->
+		{
+			File out = File.createTempFile("httpTempRead", null);
+			try (FileOutputStream fos = new FileOutputStream(out))
+			{
+				relay(response.getContentStream(), fos, 8192, response.getLength(), cancelSwitch, monitor);
+			}
+			if (cancelSwitch.get())
+			{
+				out.delete();
+				return null;
+			}
+			else
+			{
+				return out;
+			}
+		};
+		
+		/**
+		 * Called to read the HTTP response from an HTTP call.
+		 * <p> The policy of this reader is to keep reading from the open response stream until
+		 * the end is reached.
+		 * @param response the response object.
+		 * @return the returned decoded object.
+		 * @throws IOException if a read error occurs.
+		 */
+		default R onHTTPResponse(HTTPResponse response) throws IOException
+		{
+			return onHTTPResponse(response, new AtomicBoolean(false), TransferMonitor.NULL_MONITOR);
+		}
+		
+		/**
+		 * Called to read the HTTP response from an HTTP call.
+		 * <p> The policy of this reader is to keep reading from the open response stream until
+		 * the end is reached.
+		 * @param response the response object.
+		 * @param monitor the transfer monitor to use to monitor the read.
+		 * @return the returned decoded object.
+		 * @throws IOException if a read error occurs.
+		 */
+		default R onHTTPResponse(HTTPResponse response, TransferMonitor monitor) throws IOException
+		{
+			return onHTTPResponse(response, new AtomicBoolean(false), monitor);
+		}
+		
+		/**
+		 * Called to read the HTTP response from an HTTP call.
+		 * <p> The policy of this reader is to keep reading from the open response stream until
+		 * the end is reached.
+		 * @param response the response object.
+		 * @param cancelSwitch the cancel switch. Set to <code>true</code> to attempt to cancel.
+		 * @return the returned decoded object.
+		 * @throws IOException if a read error occurs.
+		 */
+		default R onHTTPResponse(HTTPResponse response, AtomicBoolean cancelSwitch) throws IOException
+		{
+			return onHTTPResponse(response, cancelSwitch, TransferMonitor.NULL_MONITOR);
+		}
+		
+		/**
+		 * Called to read the HTTP response from an HTTP call.
+		 * <p> The policy of this reader is to keep reading from the open response stream until
+		 * the end is reached or until the cancel switch is set to true (from outside the reading
+		 * mechanism). There is no policy for what to return upon canceling this reader's read.
+		 * @param response the response object.
+		 * @param cancelSwitch the cancel switch. Set to <code>true</code> to attempt to cancel.
+		 * @param monitor the transfer monitor to use to monitor the read.
+		 * @return the returned decoded object.
+		 * @throws IOException if a read error occurs.
+		 */
+		R onHTTPResponse(HTTPResponse response, AtomicBoolean cancelSwitch, TransferMonitor monitor) throws IOException;
+		
+		/**
+		 * Creates an HTTPReader that returns a File with the response body content written to it.
+		 * The target File will be created or overwritten.
+		 * @param targetFile the target file.
+		 * @return a reader for the file.
+		 */
+		static HTTPReader<File> createFileDownloader(final File targetFile)
+		{
+			return (response, cancelSwitch, monitor) ->
+			{
+				try (FileOutputStream fos = new FileOutputStream(targetFile))
+				{
+					relay(response.getContentStream(), fos, 8192, response.getLength(), cancelSwitch, monitor);
+				}
+				if (cancelSwitch.get())
+				{
+					targetFile.delete();
+					return null;
+				}
+				else
+				{
+					return targetFile;
+				}
+			};
+		}
 		
 	}
 
@@ -1775,6 +1857,19 @@ public final class HTTPUtils
 		 * Reads this response with an HTTPReader and returns the read result.
 		 * @param <T> the reader return type - the desired object type.
 		 * @param reader the reader.
+		 * @param monitor the transfer monitor to use to monitor the read.
+		 * @return the resultant object.
+		 * @throws IOException if a read error occurs.
+		 */
+		public <T> T read(HTTPReader<T> reader, TransferMonitor monitor) throws IOException
+		{
+			return reader.onHTTPResponse(this, monitor);
+		}
+		
+		/**
+		 * Reads this response with an HTTPReader and returns the read result.
+		 * @param <T> the reader return type - the desired object type.
+		 * @param reader the reader.
 		 * @param cancelSwitch the cancel switch. Set to <code>true</code> to attempt to cancel.
 		 * @return the resultant object.
 		 * @throws IOException if a read error occurs.
@@ -1782,6 +1877,20 @@ public final class HTTPUtils
 		public <T> T read(HTTPReader<T> reader, AtomicBoolean cancelSwitch) throws IOException
 		{
 			return reader.onHTTPResponse(this, cancelSwitch);
+		}
+		
+		/**
+		 * Reads this response with an HTTPReader and returns the read result.
+		 * @param <T> the reader return type - the desired object type.
+		 * @param reader the reader.
+		 * @param cancelSwitch the cancel switch. Set to <code>true</code> to attempt to cancel.
+		 * @param monitor the transfer monitor to use to monitor the read.
+		 * @return the resultant object.
+		 * @throws IOException if a read error occurs.
+		 */
+		public <T> T read(HTTPReader<T> reader, AtomicBoolean cancelSwitch, TransferMonitor monitor) throws IOException
+		{
+			return reader.onHTTPResponse(this, cancelSwitch, monitor);
 		}
 		
 		/**
@@ -2247,7 +2356,7 @@ public final class HTTPUtils
 		 * @param monitor the monitor to call.
 		 * @return this request, for chaining.
 		 */
-		public HTTPRequest monitor(TransferMonitor monitor) 
+		public HTTPRequest uploadMonitor(TransferMonitor monitor) 
 		{
 			this.monitor = monitor;
 			return this;

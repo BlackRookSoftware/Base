@@ -2218,6 +2218,7 @@ public final class HTTPUtils
 		 * are not affected if that headers object is changed later.
 		 * @param headers the new headers.
 		 * @return this request, for chaining.
+		 * @see HTTPUtils#headers(java.util.Map.Entry...)
 		 */
 		public HTTPRequest headers(HTTPHeaders headers)
 		{
@@ -2257,6 +2258,7 @@ public final class HTTPUtils
 		 * The parameters are copied, such that future alterations to the parameters passed in
 		 * are not affected if that parameters object is changed later.
 		 * @param parameters the new parameters.
+		 * @see HTTPUtils#parameters(java.util.Map.Entry...)
 		 * @return this request, for chaining.
 		 */
 		public HTTPRequest parameters(HTTPParameters parameters)
@@ -2309,6 +2311,7 @@ public final class HTTPUtils
 		 * Adds a cookie to this request.
 		 * @param cookie the cookie to add.
 		 * @return this request, for chaining.
+		 * @see HTTPUtils#cookie(String, String)
 		 */
 		public HTTPRequest addCookie(HTTPCookie cookie)
 		{
@@ -2320,6 +2323,13 @@ public final class HTTPUtils
 		 * Sets the content body for this request.
 		 * @param content the content. Can be null for no content body.
 		 * @return this request, for chaining.
+		 * @see #createByteContent(String, byte[])
+		 * @see #createByteContent(String, String, byte[])
+		 * @see #createTextContent(String, String)
+		 * @see #createFileContent(String, File)
+		 * @see #createFileContent(String, String, File)
+		 * @see #createFormContent(HTTPParameters)
+		 * @see #createMultipartContent()
 		 */
 		public HTTPRequest content(HTTPContent content) 
 		{
@@ -2802,7 +2812,7 @@ public final class HTTPUtils
 	 * <p>
 	 * Since the {@link HTTPResponse} auto-closes, the best way to use this method is with a try-with-resources call, a la:
 	 * <pre><code>
-	 * try (HTTPResponse response = getHTTPContent(requestMethod, url, headers, content, defaultResponseCharset, socketTimeoutMillis, uploadMonitor))
+	 * try (HTTPResponse response = httpFetch(request, cancelSwitch))
 	 * {
 	 *     // ... read response ...
 	 * }
@@ -2813,14 +2823,6 @@ public final class HTTPUtils
 	 * @throws IOException if an error happens during the read/write.
 	 * @throws SocketTimeoutException if the socket read times out.
 	 * @throws ProtocolException if the requestMethod is incorrect, or not an HTTP URL.
-	 * @see HTTPHeaders
-	 * @see #createByteContent(String, byte[])
-	 * @see #createByteContent(String, String, byte[])
-	 * @see #createTextContent(String, String)
-	 * @see #createFileContent(String, File)
-	 * @see #createFileContent(String, String, File)
-	 * @see #createFormContent(HTTPParameters)
-	 * @see #createMultipartContent()
 	 */
 	private static HTTPResponse httpFetch(HTTPRequest request, AtomicBoolean cancelSwitch) throws IOException
 	{

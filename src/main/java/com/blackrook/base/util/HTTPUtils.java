@@ -2641,8 +2641,7 @@ public final class HTTPUtils
 	}
 	
 	/**
-	 * Takes, presumably, a URL path and replaces segments of it with other values,
-	 * auto-escaping the results into something sanitized for URLs.
+	 * Takes, presumably, a URL path and replaces segments of it with other values.
 	 * <p> This is intended to be used on strings that are REST endpoints that use URL paths and arguments/parameters, such as:
 	 * <p><pre>/collection/{id}</pre>
 	 * <p> An appropriate call to replace the <code>{id}</code> substring would be:
@@ -2659,7 +2658,7 @@ public final class HTTPUtils
 		for (int i = 0; i < entries.length; i++)
 		{
 			Map.Entry<String, String> entry = entries[i];
-			url = url.replace(entry.getKey(), uriEncode(entry.getValue()));
+			url = url.replace(entry.getKey(), entry.getValue());
 		}
 		return url;
 	}

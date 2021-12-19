@@ -16,12 +16,16 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
+import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -32,6 +36,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.TimeZone;
+import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -485,8 +490,10 @@ public final class HTTPUtils
 			@Override
 			protected T execute() throws Throwable
 			{
-				response = request.send(cancelSwitch);
-				return response.read(reader, cancelSwitch);
+				try (HTTPResponse resp = (response = request.send(cancelSwitch)))
+				{
+					return resp.read(reader, cancelSwitch);
+				}
 			}
 		}
 	}
@@ -1238,7 +1245,7 @@ public final class HTTPUtils
 			LAX,
 			NONE;
 		}
-		
+
 		private String key;
 		private String value;
 		private List<String> flags;
@@ -1343,7 +1350,7 @@ public final class HTTPUtils
 		public String toString()
 		{
 			StringBuilder sb = new StringBuilder();
-			sb.append(key).append('=').append(value);
+			sb.append(key).append('=').append(toURLEncoding(value));
 			for (String flag : flags)
 				sb.append("; ").append(flag);
 			return sb.toString();
@@ -1514,15 +1521,17 @@ public final class HTTPUtils
 		private HTTPRequest request;
 		
 		private Map<String, List<String>> headers;
+		
 		private int statusCode;
 		private String statusMessage;
+		
 		private Long length;
 		private InputStream contentStream;
 		private String charset;
 		private String contentTypeHeader;
 		private String contentType;
-		
 		private String encoding;
+		
 		private String contentDisposition;
 		private String filename;
 		
@@ -1560,7 +1569,12 @@ public final class HTTPUtils
 			this.filename = null;
 			this.contentDisposition = null;
 			this.contentStream = null;
-			this.headers = conn.getHeaderFields();
+			
+			this.headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+			for (Map.Entry<String, List<String>> entry : conn.getHeaderFields().entrySet())
+				if (entry.getKey() != null)
+					this.headers.put(entry.getKey(), entry.getValue());
+			this.headers = Collections.unmodifiableMap(this.headers);
 			
 			// content disposition?
 			if ((contentDisposition = conn.getHeaderField("content-disposition")) != null)
@@ -1601,38 +1615,26 @@ public final class HTTPUtils
 		}
 		
 		/**
-		 * @return true if and only if the response status code is between 100 and 199, inclusive, false otherwise.
+		 * Gets the last specified header value of the response for a header name. 
+		 * @param name the header name.
+		 * @return the value, or null if no header by that name.
 		 */
-		public boolean isInformational()
+		public String getHeader(String name)
 		{
-			return statusCode / 100 == 1;
+			List<String> headerList = getHeaderValues(name);
+			return headerList != null ? headerList.get(headerList.size() - 1) : null;
 		}
-		
+
 		/**
-		 * @return true if and only if the response status code is between 200 and 299, inclusive, false otherwise.
+		 * Gets the list of header values for a header name.
+		 * @param name the header name.
+		 * @return the list of values, or null if no header by that name.
 		 */
-		public boolean isSuccess()
+		public List<String> getHeaderValues(String name)
 		{
-			return statusCode / 100 == 2;
+			return headers.get(name);
 		}
-		
-		/**
-		 * @return true if and only if the response status code is between 300 and 399, inclusive, false otherwise.
-		 */
-		public boolean isRedirect()
-		{
-			return statusCode / 100 == 3;
-		}
-		
-		/**
-		 * @return true if and only if the response status code is between 400 and 599, inclusive, false otherwise.
-		 */
-		public boolean isError()
-		{
-			int range = statusCode / 100;
-			return range == 4 || range == 5;
-		}
-		
+
 		/**
 		 * @return the response status code.
 		 */
@@ -1649,6 +1651,72 @@ public final class HTTPUtils
 			return statusMessage;
 		}
 	
+		/**
+		 * Fetches the list of previous redirect addresses (if any) plus the final address read, in the order contacted.
+		 * If no redirects occurred, this returns a list with a single address.
+		 * @return an immutable list of URLs.
+		 */
+		public List<String> getRedirectHistory()
+		{
+			List<String> out = new ArrayList<>((request.redirectedURLs != null ? request.redirectedURLs.size() : 0) + 1);
+			if (request.redirectedURLs != null)
+				out.addAll(request.redirectedURLs);
+			out.add(request.url);
+			return Collections.unmodifiableList(out);
+		}
+
+		/**
+		 * @return true if and only if the response status code is between 100 and 199, inclusive, false otherwise.
+		 */
+		public boolean isInformational()
+		{
+			return statusCode / 100 == 1;
+		}
+
+		/**
+		 * @return true if and only if the response status code is between 200 and 299, inclusive, false otherwise.
+		 */
+		public boolean isSuccess()
+		{
+			return statusCode / 100 == 2;
+		}
+
+		/**
+		 * @return true if and only if the response status code is between 300 and 399, inclusive, false otherwise.
+		 */
+		public boolean isRedirect()
+		{
+			return statusCode / 100 == 3;
+		}
+
+		/**
+		 * Checks if the this response can be automatically actioned upon in terms of resolving server-directed redirects.
+		 * This object can build a redirect request if the status code is NOT 300, 304, or 305, since that requires more of an intelligent decision.
+		 * <p> NOTE: This will not redirect a request that has a redirect in the content body (for instance, an HTML meta tag).
+		 * It must be a status code and <code>Location</code> header.
+		 * @return true if and only if the response status code has defined redirect guidelines, false otherwise.
+		 * @see #buildRedirect()
+		 */
+		public boolean isAutoRedirectable()
+		{
+			return (
+				statusCode == 301
+				|| statusCode == 302
+				|| statusCode == 303
+				|| statusCode == 307
+				|| statusCode == 308
+			) && getHeader("Location") != null;
+		}
+
+		/**
+		 * @return true if and only if the response status code is between 400 and 599, inclusive, false otherwise.
+		 */
+		public boolean isError()
+		{
+			int range = statusCode / 100;
+			return range == 4 || range == 5;
+		}
+
 		/**
 		 * @return the response's content length (if reported).
 		 */
@@ -1766,59 +1834,45 @@ public final class HTTPUtils
 		}
 
 		/**
-		 * Gets the last specified header value of the response for a header name. 
-		 * @param name the header name.
-		 * @return the value, or null if no header by that name.
-		 */
-		public String getHeader(String name)
-		{
-			List<String> headerList = getHeaders(name);
-			return headerList != null ? headerList.get(headerList.size() - 1) : null;
-		}
-		
-		/**
-		 * Gets the list of header values for a header name.
-		 * @param name the header name.
-		 * @return the list of values, or null if no header by that name.
-		 */
-		public List<String> getHeaders(String name)
-		{
-			return headers.get(name);
-		}
-		
-		/**
 		 * Builds a request that fulfills a redirect, but only if this response is a redirect status.
-		 * @return a new request that would fulfill a redirect.
-		 * @throws IllegalStateException if this response is not a redirect, or a 300 or 304 status code that would not warrant a remote redirect.
+		 * @return a new request that would fulfill a redirect response.
+		 * @throws IllegalStateException if this response is not a redirect, or a 300, 304, or 305 
+		 * 		status code that would not warrant a remote redirect nor specific handling, or if a redirect loop has been detected.
+		 * @throws IllegalArgumentException if the URL string from the server is malformed.
 		 */
 		public HTTPRequest buildRedirect()
 		{
 			if (!isRedirect())
 				throw new IllegalStateException("Response is not a redirect type.");
 			
-			String location = getHeader("location");
+			String location = getHeader("Location");
 			if (location == null)
 				throw new IllegalStateException("Response provided no redirect location.");
 			
+			HTTPRequest out;
+			
 			switch (statusCode)
 			{
-				case 304: /* Not Modified */
-					// Not handled?
-					break;
-
-				case 300: /* Multiple Choice */
-					break;
+				case 300: // Multiple Choice
+					throw new IllegalStateException("Response status code 300 not automatically redirectable. Handle locally.");
+				case 304: // Not Modified
+					throw new IllegalStateException("Response redirects to local cache (code 304). Handle locally.");
+				case 305: // Use Proxy
+					throw new IllegalStateException("Response status code unsupported: 305 Use Proxy");
 				
-				case 301: /* Moved Permanently */
-				case 302: /* Found */
-				case 303: /* See Other */
-				case 307: /* Temporary Redirect */
-				case 308: /* Permanent Redirect */
-				// TODO: Finish this.
+				default:
+				case 301: // Moved Permanently
+				case 302: // Found
+				case 307: // Temporary Redirect
+				case 308: // Permanent Redirect
+					out = getRequest().copyRedirect(location);
+					break;
+					
+				case 303: // See Other (Force GET)
+					out = getRequest().copyRedirect(HTTP_METHOD_GET, location);
+					break;
 			}
 			
-			HTTPRequest out = getRequest().copy();
-			out.url = location;
 			return out;
 		}
 		
@@ -1842,6 +1896,8 @@ public final class HTTPUtils
 		private HTTPHeaders headers;
 		/** HTTP Query Parameters. */
 		private HTTPParameters parameters;
+		/** List of cookies. */
+		private List<HTTPCookie> cookies;
 		/** Request timeout milliseconds. */
 		private int timeoutMillis;
 		/** Default charset encoding (on response). */
@@ -1850,6 +1906,10 @@ public final class HTTPUtils
 		private HTTPContent content;
 		/** Upload Transfer Monitor. */
 		private TransferMonitor monitor;
+		/** Auto-redirect if possible? */
+		private boolean autoRedirect;
+		/** Set of previous URLs from redirects. */
+		private List<String> redirectedURLs;
 		
 		private HTTPRequest()
 		{
@@ -1857,106 +1917,131 @@ public final class HTTPUtils
 			this.url = null;
 			this.headers = HTTPUtils.headers();
 			this.parameters = HTTPUtils.parameters();
+			this.cookies = new LinkedList<>();
 			this.timeoutMillis = DEFAULT_TIMEOUT_MILLIS.get();
 			this.defaultCharsetEncoding = null;
 			this.content = null;
 			this.monitor = null;
+			this.autoRedirect = true;
+			this.redirectedURLs = null;
+		}
+		
+		// Checks if a URL pattern is valid.
+		// Returns the passed-in URL, unchanged.
+		private static String checkURL(String url)
+		{
+			return checkURL(url, false);
+		}
+		
+		// Checks if a URL pattern is valid.
+		// Returns the passed-in URL, unchanged.
+		private static String checkURL(String url, boolean fromServer)
+		{
+			try {
+				new URL(url);
+				return url;
+			} catch (MalformedURLException e) {
+				throw new IllegalArgumentException(fromServer ? "Redirect URL from server is malformed." : "URL is malformed.", e);
+			}
+		}
+		
+		/**
+		 * Starts a new request builder.
+		 * @param method the HTTP method.
+		 * @param url the target URL.
+		 * @return an {@link HTTPRequest}.
+		 * @throws IllegalArgumentException if the URL string is malformed.
+		 */
+		public static HTTPRequest create(String method, String url)
+		{
+			HTTPRequest out = new HTTPRequest();
+			out.method = method;
+			out.url = checkURL(url);
+			return out;
 		}
 		
 		/**
 		 * Starts a GET request builder.
+		 * This will also auto-redirect on an actionable redirect status
 		 * @param url the URL to target.
 		 * @return an {@link HTTPRequest}.
+		 * @throws IllegalArgumentException if the URL string is malformed.
 		 */
 		public static HTTPRequest get(String url)
 		{
-			HTTPRequest out = new HTTPRequest();
-			out.method = HTTP_METHOD_GET;
-			out.url = url;
-			return out;
+			return create(HTTP_METHOD_GET, url);
 		}
 
 		/**
 		 * Starts a HEAD request builder.
 		 * @param url the URL to target.
 		 * @return an {@link HTTPRequest}.
+		 * @throws IllegalArgumentException if the URL string is malformed.
 		 */
 		public static HTTPRequest head(String url)
 		{
-			HTTPRequest out = new HTTPRequest();
-			out.method = HTTP_METHOD_HEAD;
-			out.url = url;
-			return out;
+			return create(HTTP_METHOD_HEAD, url);
 		}
 
 		/**
 		 * Starts a DELETE request builder.
 		 * @param url the URL to target.
 		 * @return an {@link HTTPRequest}.
+		 * @throws IllegalArgumentException if the URL string is malformed.
 		 */
 		public static HTTPRequest delete(String url)
 		{
-			HTTPRequest out = new HTTPRequest();
-			out.method = HTTP_METHOD_DELETE;
-			out.url = url;
-			return out;
+			return create(HTTP_METHOD_DELETE, url);
 		}
 
 		/**
 		 * Starts a OPTIONS request builder.
 		 * @param url the URL to target.
 		 * @return an {@link HTTPRequest}.
+		 * @throws IllegalArgumentException if the URL string is malformed.
 		 */
 		public static HTTPRequest options(String url)
 		{
-			HTTPRequest out = new HTTPRequest();
-			out.method = HTTP_METHOD_OPTIONS;
-			out.url = url;
-			return out;
+			return create(HTTP_METHOD_OPTIONS, url);
 		}
 
 		/**
 		 * Starts a TRACE request builder.
 		 * @param url the URL to target.
 		 * @return an {@link HTTPRequest}.
+		 * @throws IllegalArgumentException if the URL string is malformed.
 		 */
 		public static HTTPRequest trace(String url)
 		{
-			HTTPRequest out = new HTTPRequest();
-			out.method = HTTP_METHOD_TRACE;
-			out.url = url;
-			return out;
+			return create(HTTP_METHOD_TRACE, url);
 		}
 
 		/**
 		 * Starts a PUT request builder.
 		 * @param url the URL to target.
 		 * @return an {@link HTTPRequest}.
+		 * @throws IllegalArgumentException if the URL string is malformed.
 		 */
 		public static HTTPRequest put(String url)
 		{
-			HTTPRequest out = new HTTPRequest();
-			out.method = HTTP_METHOD_PUT;
-			out.url = url;
-			return out;
+			return create(HTTP_METHOD_PUT, url);
 		}
 
 		/**
 		 * Starts a POST request builder.
 		 * @param url the URL to target.
 		 * @return an {@link HTTPRequest}.
+		 * @throws IllegalArgumentException if the URL string is malformed.
 		 */
 		public static HTTPRequest post(String url)
 		{
-			HTTPRequest out = new HTTPRequest();
-			out.method = HTTP_METHOD_POST;
-			out.url = url;
-			return out;
+			return create(HTTP_METHOD_POST, url);
 		}
 
 		/**
 		 * Makes a deep copy of this request, such that
-		 * changes to this one do not affect the original (the content and monitor, however, if any, is reference-copied). 
+		 * changes to this one do not affect the original 
+		 * (the content and monitor, however, if any, is reference-copied). 
 		 * @return a new HTTPRequest that is a copy of this one.
 		 */
 		public HTTPRequest copy()
@@ -1966,10 +2051,55 @@ public final class HTTPUtils
 			out.url = this.url;
 			out.headers = this.headers.copy();
 			out.parameters = this.parameters.copy();
+			out.cookies = new LinkedList<>(this.cookies);
 			out.timeoutMillis = this.timeoutMillis;
 			out.defaultCharsetEncoding = this.defaultCharsetEncoding;
 			out.content = this.content;
 			out.monitor = this.monitor;
+			if (redirectedURLs == null)
+				out.redirectedURLs = null;
+			else
+				out.redirectedURLs = new LinkedList<>(out.redirectedURLs);
+			return out;
+		}
+
+		/**
+		 * Copies this request object, but preps this as though it came from a redirect.
+		 * The new URL is set (method is preserved), but the previous URL on this request is preserved in a set of previous URLs in order to
+		 * detect redirect loops.
+		 * @param newURL the new URL (usually from a <code>"Location"</code> header value).
+		 * @return a new request that is a copy of this one, but with a new method and URL.
+		 * @throws IllegalStateException if the new URL has already been seen previously in earlier redirects.
+		 * @throws IllegalArgumentException if the URL string is malformed.
+		 */
+		public HTTPRequest copyRedirect(String newURL)
+		{
+			return copyRedirect(null, newURL);
+		}
+		
+		/**
+		 * Copies this request object, but preps this as though it came from a redirect.
+		 * The new URL and method are set, but the previous URL on this request is preserved in a set of previous URLs in order to
+		 * detect redirect loops.
+		 * @param newMethod the new HTTP method. If not {@value #HTTP_METHOD_POST} nor {@value #HTTP_METHOD_PUT}, the body is automatically discarded.
+		 * @param newURL the new URL (usually from a <code>"Location"</code> header value).
+		 * @return a new request that is a copy of this one, but with a new method and URL.
+		 * @throws IllegalStateException if the new URL has already been seen previously in earlier redirects.
+		 * @throws IllegalArgumentException if the URL string is malformed.
+		 */
+		public HTTPRequest copyRedirect(String newMethod, String newURL)
+		{
+			HTTPRequest out = copy();
+			if (out.redirectedURLs == null)
+				out.redirectedURLs = new LinkedList<>();
+			if (out.redirectedURLs.contains(out.url))
+				throw new IllegalStateException("Redirect loop detected - " + out.url + " wad already visited.");
+			out.redirectedURLs.add(out.url);
+			out.url = checkURL(newURL, true);
+			if (newMethod != null)
+				out.method = newMethod;
+			if (!(out.method.equalsIgnoreCase(HTTP_METHOD_POST) || out.method.equalsIgnoreCase(HTTP_METHOD_PUT)))
+				out.content(null);
 			return out;
 		}
 		
@@ -2067,8 +2197,19 @@ public final class HTTPUtils
 		}
 		
 		/**
+		 * Adds a cookie to this request.
+		 * @param cookie the cookie to add.
+		 * @return this request, for chaining.
+		 */
+		public HTTPRequest addCookie(HTTPCookie cookie)
+		{
+			this.cookies.add(cookie);
+			return this;
+		}
+		
+		/**
 		 * Sets the content body for this request.
-		 * @param content the content.
+		 * @param content the content. Can be null for no content body.
 		 * @return this request, for chaining.
 		 */
 		public HTTPRequest content(HTTPContent content) 
@@ -2113,6 +2254,19 @@ public final class HTTPUtils
 		}
 		
 		/**
+		 * Sets if auto-redirecting happens.
+		 * All requests 
+		 * Note that not every redirect can be changed into an actionable redirect.
+		 * @param autoRedirect true 
+		 * @return this request, for chaining.
+		 */
+		public HTTPRequest setAutoRedirect(boolean autoRedirect) 
+		{
+			this.autoRedirect = autoRedirect;
+			return this;
+		}
+		
+		/**
 		 * Sends this request and gets an open response.
 		 * <p>
 		 * Best used in a try-with-resources block so that the response input stream auto-closes 
@@ -2153,7 +2307,20 @@ public final class HTTPUtils
 		 */
 		public HTTPResponse send(AtomicBoolean cancelSwitch) throws IOException
 		{
-			return httpFetch(this, cancelSwitch);
+			HTTPResponse out;
+			HTTPRequest current = this;
+			while (true)
+			{
+				out = httpFetch(current, cancelSwitch);
+				if (!autoRedirect || !out.isAutoRedirectable())
+					break;
+				else
+				{
+					current = out.buildRedirect();
+					out.close(); // close open response.
+				}
+			}
+			return out;
 		}
 
 		/**
@@ -2186,7 +2353,10 @@ public final class HTTPUtils
 		 */
 		public <T> T send(AtomicBoolean cancelSwitch, HTTPReader<T> reader) throws IOException
 		{
-			return httpFetch(this, cancelSwitch, reader);
+			try (HTTPResponse response = send(cancelSwitch))
+			{
+				return response.read(reader, cancelSwitch != null ? cancelSwitch : new AtomicBoolean(false));
+			}
 		}
 
 		/**
@@ -2319,6 +2489,17 @@ public final class HTTPUtils
 	}
 	
 	/**
+	 * Creates a simple key-value pair.
+	 * @param key the pair key.
+	 * @param value the pair value (converted to a string via {@link String#valueOf(Object)}).
+	 * @return a new pair.
+	 */
+	public static Map.Entry<String, String> entry(String key, Object value)
+	{
+		return new AbstractMap.SimpleEntry<>(key, String.valueOf(value));
+	}
+	
+	/**
 	 * Starts a new {@link HTTPCookie} object.
 	 * @param key the cookie name.
 	 * @param value the cookie value. 
@@ -2331,20 +2512,41 @@ public final class HTTPUtils
 	
 	/**
 	 * Starts a new {@link HTTPHeaders} object.
+	 * @param entries the list of entries to add.
 	 * @return a new header object.
+	 * @see #entry(String, String)
+	 * @see HTTPHeaders#setHeader(String, String)
 	 */
-	public static HTTPHeaders headers()
+	@SafeVarargs
+	public static HTTPHeaders headers(Map.Entry<String, String> ... entries)
 	{
-		return new HTTPHeaders();
+		HTTPHeaders out = new HTTPHeaders();
+		for (int i = 0; i < entries.length; i++)
+		{
+			Map.Entry<String, String> entry = entries[i];
+			out.setHeader(entry.getKey(), entry.getValue());
+		}
+		return out;
 	}
 	
 	/**
 	 * Starts a new {@link HTTPParameters} object.
+	 * Duplicate parameters are added.
+	 * @param entries the list of entries to add.
 	 * @return a new parameters object.
+	 * @see #entry(String, String)
+	 * @see HTTPParameters#addParameter(String, Object)
 	 */
-	public static HTTPParameters parameters()
+	@SafeVarargs
+	public static HTTPParameters parameters(Map.Entry<String, String> ... entries)
 	{
-		return new HTTPParameters();
+		HTTPParameters out = new HTTPParameters();
+		for (int i = 0; i < entries.length; i++)
+		{
+			Map.Entry<String, String> entry = entries[i];
+			out.addParameter(entry.getKey(), entry.getValue());
+		}
+		return out;
 	}
 	
 	/**
@@ -2541,6 +2743,8 @@ public final class HTTPUtils
 		
 		if (headers != null) for (Map.Entry<String, String> entry : headers.map.entrySet())
 			conn.setRequestProperty(entry.getKey(), entry.getValue());
+		for (HTTPCookie cookie : request.cookies)
+			conn.addRequestProperty("Set-Cookie", cookie.toString());
 	
 		// set up body data.
 		if (content != null)
@@ -2567,34 +2771,6 @@ public final class HTTPUtils
 		}
 		
 		return new HTTPResponse(request, conn, defaultResponseCharset);
-	}
-	
-	/**
-	 * Gets the content from a opening an HTTP URL.
-	 * The stream is closed afterward (but not the connection, which may be pooled).
-	 * @param <R> the resultant value read from the response.
-	 * @param request the request object.
-	 * @param cancelSwitch the cancel switch. Set to <code>true</code> to attempt to cancel. Can be null.
-	 * @param reader the reader to use to read the response and return the data in a useful shape.
-	 * @return the read content from an HTTP request, via the provided reader.
-	 * @throws IOException if an error happens during the read/write.
-	 * @throws SocketTimeoutException if the socket read times out.
-	 * @throws ProtocolException if the requestMethod is incorrect, or not an HTTP URL.
-	 * @see HTTPHeaders
-	 * @see #createByteContent(String, byte[])
-	 * @see #createByteContent(String, String, byte[])
-	 * @see #createTextContent(String, String)
-	 * @see #createFileContent(String, File)
-	 * @see #createFileContent(String, String, File)
-	 * @see #createFormContent(HTTPParameters)
-	 * @see #createMultipartContent()
-	 */
-	private static <R> R httpFetch(HTTPRequest request, AtomicBoolean cancelSwitch, HTTPReader<R> reader) throws IOException
-	{
-		try (HTTPResponse response = httpFetch(request, cancelSwitch))
-		{
-			return response.read(reader, cancelSwitch != null ? cancelSwitch : new AtomicBoolean(false));
-		}
 	}
 	
 	// Fetches or creates the thread executor.

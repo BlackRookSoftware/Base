@@ -11,9 +11,13 @@ public final class HTTPUtilsTest
 	public static void main(String[] args) throws InterruptedException, ExecutionException 
 	{
 		HTTPRequestFuture<String> content = HTTPRequest.get("http://mtrop.net").sendAsync(HTTPReader.STRING_CONTENT_READER);
-		HTTPRequestFuture<String> content2 = HTTPRequest.get("https://blackrooksoftware.github.io/").sendAsync(HTTPReader.STRING_CONTENT_READER);
 		System.out.println("Fetching....");
-		System.out.println(content.getResponse().getStatusCode() + ": " + content.result());
-		System.out.println(content2.getResponse().getStatusCode() + ": " + content2.result());
+		if (content.getException() != null)
+			content.getException().printStackTrace(System.err);
+		else
+		{
+			System.out.println(content.getResponse().getStatusCode() + ": " + content.result());
+			System.out.println(content.getResponse().getRedirectHistory());
+		}
 	}
 }

@@ -2819,7 +2819,6 @@ public final class HTTPUtils
 	 * @param entries the list of replacers, mapping.
 	 * @return the resultant replaced and encoded URL.
 	 * @see #entry(String, Object)
-	 * @see #urlEncode(String)
 	 */
 	@SafeVarargs
 	public static String replaceURL(String url, Map.Entry<String, String> ... entries)
@@ -2847,7 +2846,7 @@ public final class HTTPUtils
 	 * Starts a new {@link HTTPHeaders} object.
 	 * @param entries the list of entries to add.
 	 * @return a new header object.
-	 * @see #entry(String, String)
+	 * @see #entry(String, Object)
 	 * @see HTTPHeaders#setHeader(String, String)
 	 */
 	@SafeVarargs
@@ -2867,7 +2866,7 @@ public final class HTTPUtils
 	 * Duplicate parameters are added.
 	 * @param entries the list of entries to add.
 	 * @return a new parameters object.
-	 * @see #entry(String, String)
+	 * @see #entry(String, Object)
 	 * @see HTTPParameters#addParameter(String, Object)
 	 */
 	@SafeVarargs

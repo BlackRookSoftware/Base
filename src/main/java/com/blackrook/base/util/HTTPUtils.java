@@ -84,6 +84,7 @@ public final class HTTPUtils
 	private HTTPUtils() {}
 	
 	private static final Charset UTF8 = Charset.forName("utf-8");
+	private static final Charset ISO_8859_1 = Charset.forName("iso-8859-1");
 	private static final String[] VALID_HTTP = new String[]{"http", "https"};
 	private static final byte[] URL_RESERVED = "!#$%&'()*+,/:;=?@[]".getBytes(UTF8);
 	private static final byte[] URL_UNRESERVED = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~".getBytes(UTF8);
@@ -527,14 +528,15 @@ public final class HTTPUtils
 	{
 		/**
 		 * An HTTP Reader that reads byte content and returns a decoded String.
-		 * Gets the string contents of the response, decoded using the response's charset.
+		 * Gets the string contents of the response, decoded using the response's charset,
+		 * or if not provided, "ISO-8859-1".
 		 * <p> If the read is cancelled, this returns null.
 		 */
 		static HTTPReader<String> STRING_CONTENT_READER = (response, cancelSwitch, monitor) ->
 		{
 			String charset;
 			if ((charset = response.getCharset()) == null)
-				throw new UnsupportedEncodingException("No charset specified.");
+				charset = ISO_8859_1.displayName();
 			
 			char[] c = new char[16384];
 			StringBuilder sb = new StringBuilder();
@@ -668,6 +670,9 @@ public final class HTTPUtils
 	 */
 	public interface HTTPContent
 	{
+		/** Default chunk size in bytes for uploads. */
+		public static final int DEFAULT_CHUNK_SIZE = 4096;
+
 		/**
 		 * @return the content MIME-type of this content.
 		 */
@@ -684,9 +689,10 @@ public final class HTTPUtils
 		String getEncoding();
 	
 		/**
-		 * @return the length of the content in bytes.
+		 * @return the length of the content in bytes, or null to use an unspecified length and a specific chunk size.
+		 * @see #getChunkLength()
 		 */
-		long getLength();
+		Long getLength();
 	
 		/**
 		 * @return an input stream for the data.
@@ -695,6 +701,14 @@ public final class HTTPUtils
 		 */
 		InputStream getInputStream() throws IOException;
 		
+		/**
+		 * @return the length of the upload chunks.
+		 */
+		default int getChunkLength()
+		{
+			return DEFAULT_CHUNK_SIZE;
+		}
+	
 	}
 
 	/**
@@ -722,14 +736,14 @@ public final class HTTPUtils
 
 		static
 		{
-			CRLF = "\r\n".getBytes(UTF8);
-			DISPOSITION_HEADER = "Content-Disposition: form-data".getBytes(UTF8);
-			DISPOSITION_NAME = "; name=\"".getBytes(UTF8);
-			DISPOSITION_NAME_END = "\"".getBytes(UTF8);
-			DISPOSITION_FILENAME = "; filename=\"".getBytes(UTF8);
-			DISPOSITION_FILENAME_END = "\"".getBytes(UTF8);
-			TYPE_HEADER = "Content-Type: ".getBytes(UTF8);
-			ENCODING_HEADER = "Content-Transfer-Encoding: ".getBytes(UTF8);
+			CRLF = "\r\n".getBytes(ISO_8859_1);
+			DISPOSITION_HEADER = "Content-Disposition: form-data".getBytes(ISO_8859_1);
+			DISPOSITION_NAME = "; name=\"".getBytes(ISO_8859_1);
+			DISPOSITION_NAME_END = "\"".getBytes(ISO_8859_1);
+			DISPOSITION_FILENAME = "; filename=\"".getBytes(ISO_8859_1);
+			DISPOSITION_FILENAME_END = "\"".getBytes(ISO_8859_1);
+			TYPE_HEADER = "Content-Type: ".getBytes(ISO_8859_1);
+			ENCODING_HEADER = "Content-Transfer-Encoding: ".getBytes(ISO_8859_1);
 		}
 		
 		/** The form part first boundary. */
@@ -743,15 +757,17 @@ public final class HTTPUtils
 		private List<Part> parts;
 		/** Total length. */
 		private long length;
+		/** Boundary Text. */
+		private String boundaryText;
 		
 		private MultipartFormContent() 
 		{
 			this.parts = new LinkedList<>();
-			String boundaryText = generateBoundary();
+			this.boundaryText = generateBoundary();
 			
 			this.boundaryFirst = ("--" + boundaryText + "\r\n").getBytes(UTF8);
 			this.boundaryMiddle = ("\r\n--" + boundaryText + "\r\n").getBytes(UTF8);
-			this.boundaryEnd = ("\r\n--" + boundaryText + "--").getBytes(UTF8);
+			this.boundaryEnd = ("\r\n--" + boundaryText + "--\r\n").getBytes(UTF8);
 			
 			// account for start and end boundary at least.
 			this.length = boundaryFirst.length + boundaryEnd.length;
@@ -761,8 +777,9 @@ public final class HTTPUtils
 		{
 			Random r = new Random();
 			StringBuilder sb = new StringBuilder();
-			int dashes = r.nextInt(15) + 10;
-			int letters = r.nextInt(24) + 16;
+			int dashes = r.nextInt(8) + 10;
+			int letters = r.nextInt(20) + 14;
+			sb.append("HTTPUtilsBoundary");
 			while (dashes-- > 0)
 				sb.append('-');
 			while (letters-- > 0)
@@ -771,7 +788,7 @@ public final class HTTPUtils
 		}
 		
 		// Adds a part and calculates change in length.
-		private void addPart(final Part p)
+		private void addPart(Part p)
 		{
 			boolean hadOtherParts = !parts.isEmpty();
 			parts.add(p);
@@ -789,7 +806,7 @@ public final class HTTPUtils
 		 */
 		public MultipartFormContent addField(String name, String value) throws IOException
 		{
-			return addTextPart(name, null, value);
+			return addTextPart(name, "text/plain", value);
 		}
 		
 		/**
@@ -800,13 +817,29 @@ public final class HTTPUtils
 		 * @return itself, for chaining.
 		 * @throws IOException if the data can't be encoded.
 		 */
-		public MultipartFormContent addTextPart(String name, final String mimeType, final String text) throws IOException
+		public MultipartFormContent addTextPart(String name, String mimeType, String text) throws IOException
 		{
-			return addDataPart(name, mimeType, null, null, text.getBytes(UTF8));
+			return addDataPart(name, mimeType, null, UTF8.displayName(), null, text.getBytes(UTF8));
 		}
 		
 		/**
 		 * Adds a file part to this multipart form.
+		 * The MIME-Type is "application/octet-stream".
+		 * The encoding type is "binary".
+		 * The name of the file is passed along.
+		 * @param name the field name.
+		 * @param data the file data.
+		 * @return itself, for chaining.
+		 * @throws IllegalArgumentException if data is null, the file cannot be found, or the file is a directory.
+		 */
+		public MultipartFormContent addFilePart(String name, File data)
+		{
+			return addFilePart(name, null, "binary", null, data.getName(), data);
+		}
+		
+		/**
+		 * Adds a file part to this multipart form.
+		 * The encoding type is "binary".
 		 * The name of the file is passed along.
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the file part.
@@ -814,21 +847,24 @@ public final class HTTPUtils
 		 * @return itself, for chaining.
 		 * @throws IllegalArgumentException if data is null, the file cannot be found, or the file is a directory.
 		 */
-		public MultipartFormContent addFilePart(String name, String mimeType, final File data)
+		public MultipartFormContent addFilePart(String name, String mimeType, File data)
 		{
-			return addFilePart(name, mimeType, data.getName(), data);
+			return addFilePart(name, mimeType, "binary", null, data.getName(), data);
 		}
 		
 		/**
 		 * Adds a file part to this multipart form.
+		 * The encoding type is "binary".
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the file part.
+		 * @param encoding the encoding type name for the data sent, like 'base64' or 'gzip' or somesuch (can be null to signal no encoding type).
+		 * @param charset the file data's charset encoding.
 		 * @param fileName the file name to send (overridden).
 		 * @param data the file data.
 		 * @return itself, for chaining.
 		 * @throws IllegalArgumentException if data is null, the file cannot be found, or the file is a directory.
 		 */
-		public MultipartFormContent addFilePart(String name, final String mimeType, final String fileName, final File data)
+		public MultipartFormContent addFilePart(String name, String mimeType, String encoding, String charset, String fileName, final File data)
 		{
 			if (data == null)
 				throw new IllegalArgumentException("data cannot be null.");
@@ -842,17 +878,29 @@ public final class HTTPUtils
 				// Content Disposition Line
 				bos.write(DISPOSITION_HEADER);
 				bos.write(DISPOSITION_NAME);
-				bos.write(name.getBytes(UTF8));
+				bos.write(uriEncode(name).getBytes(ISO_8859_1));
 				bos.write(DISPOSITION_NAME_END);
 				bos.write(DISPOSITION_FILENAME);
-				bos.write(fileName.getBytes(UTF8));
+				bos.write(uriEncode(fileName).getBytes(ISO_8859_1));
 				bos.write(DISPOSITION_FILENAME_END);
 				bos.write(CRLF);
 
 				// Content Type Line
+				mimeType = mimeType == null ? "application/octet-stream" : mimeType;
+				
 				bos.write(TYPE_HEADER);
-				bos.write(mimeType.getBytes(UTF8));
+				bos.write(mimeType.getBytes(ISO_8859_1));
+				if (charset != null)
+					bos.write(("; charset=" + charset).getBytes(ISO_8859_1));
 				bos.write(CRLF);
+
+				// Content transfer encoding
+				if (encoding != null)
+				{
+					bos.write(ENCODING_HEADER);
+					bos.write(encoding.getBytes(ISO_8859_1));
+					bos.write(CRLF);
+				}
 
 				// Blank line for header end.
 				bos.write(CRLF);
@@ -863,9 +911,7 @@ public final class HTTPUtils
 				throw new RuntimeException(e);
 			}
 
-			final byte[] headerBytes = bos.toByteArray();
-			
-			addPart(new Part(headerBytes, new PartData() 
+			addPart(new Part(bos.toByteArray(), new PartData() 
 			{
 				@Override
 				public long getDataLength() 
@@ -883,7 +929,69 @@ public final class HTTPUtils
 		}
 		
 		/**
+		 * Adds a text file part to this multipart form.
+		 * The MIME-Type is "text/plain".
+		 * Uses the default charset.
+		 * The name of the file is passed along.
+		 * @param name the field name.
+		 * @param data the file data.
+		 * @return itself, for chaining.
+		 * @throws IllegalArgumentException if data is null, the file cannot be found, or the file is a directory.
+		 */
+		public MultipartFormContent addTextFilePart(String name, File data)
+		{
+			return addFilePart(name, "text/plain", null, Charset.defaultCharset().displayName(), data.getName(), data);
+		}
+
+		/**
+		 * Adds a text file part to this multipart form.
+		 * Uses the default charset.
+		 * The name of the file is passed along.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the file part.
+		 * @param data the file data.
+		 * @return itself, for chaining.
+		 * @throws IllegalArgumentException if data is null, the file cannot be found, or the file is a directory.
+		 */
+		public MultipartFormContent addTextFilePart(String name, String mimeType, File data)
+		{
+			return addFilePart(name, mimeType, null, Charset.defaultCharset().displayName(), data.getName(), data);
+		}
+
+		/**
+		 * Adds a text file part to this multipart form.
+		 * The name of the file is passed along.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the file part.
+		 * @param charset the file data's charset encoding.
+		 * @param data the file data.
+		 * @return itself, for chaining.
+		 * @throws IllegalArgumentException if data is null, the file cannot be found, or the file is a directory.
+		 */
+		public MultipartFormContent addTextFilePart(String name, String mimeType, String charset, File data)
+		{
+			return addFilePart(name, mimeType, null, charset, data.getName(), data);
+		}
+
+		/**
+		 * Adds a text file part to this multipart form.
+		 * The name of the file is passed along.
+		 * @param name the field name.
+		 * @param mimeType the mimeType of the file part.
+		 * @param charset the file data's charset encoding.
+		 * @param fileName the file name to send (overridden).
+		 * @param data the file data.
+		 * @return itself, for chaining.
+		 * @throws IllegalArgumentException if data is null, the file cannot be found, or the file is a directory.
+		 */
+		public MultipartFormContent addTextFilePart(String name, String mimeType, String charset, String fileName, File data)
+		{
+			return addFilePart(name, mimeType, null, charset, fileName, data);
+		}
+
+		/**
 		 * Adds a byte data part to this multipart form.
+		 * The encoding type is "binary".
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the file part.
 		 * @param dataIn the input data.
@@ -891,11 +999,12 @@ public final class HTTPUtils
 		 */
 		public MultipartFormContent addDataPart(String name, String mimeType, byte[] dataIn)
 		{
-			return addDataPart(name, mimeType, null, null, dataIn);
+			return addDataPart(name, mimeType, "binary", null, null, dataIn);
 		}
 	
 		/**
-		 * Adds a byte data part to this multipart form as though it came from a file.
+		 * Adds a byte data part to this multipart form.
+		 * The encoding type is "binary".
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the file part.
 		 * @param fileName the name of the file, as though this were originating from a file (can be null, for "no file").
@@ -904,7 +1013,7 @@ public final class HTTPUtils
 		 */
 		public MultipartFormContent addDataPart(String name, String mimeType, String fileName, byte[] dataIn)
 		{
-			return addDataPart(name, mimeType, null, fileName, dataIn);
+			return addDataPart(name, mimeType, "binary", null, fileName, dataIn);
 		}
 		
 		/**
@@ -912,40 +1021,41 @@ public final class HTTPUtils
 		 * @param name the field name.
 		 * @param mimeType the mimeType of the file part.
 		 * @param encoding the encoding type name for the data sent, like 'base64' or 'gzip' or somesuch (can be null to signal no encoding type).
+		 * @param charset the charset name that the text is encoded in.
 		 * @param fileName the name of the file, as though this were originating from a file (can be null, for "no file").
 		 * @param dataIn the input data.
 		 * @return itself, for chaining.
 		 */
-		public MultipartFormContent addDataPart(String name, final String mimeType, final String encoding, final String fileName, final byte[] dataIn)
+		public MultipartFormContent addDataPart(String name, String mimeType, String encoding, String charset, String fileName, final byte[] dataIn)
 		{
 			ByteArrayOutputStream bos = new ByteArrayOutputStream(256);
 			try {
 				// Content Disposition Line
 				bos.write(DISPOSITION_HEADER);
 				bos.write(DISPOSITION_NAME);
-				bos.write(name.getBytes(UTF8));
+				bos.write(uriEncode(name).getBytes(ISO_8859_1));
 				bos.write(DISPOSITION_NAME_END);
 				if (fileName != null)
 				{
 					bos.write(DISPOSITION_FILENAME);
-					bos.write(fileName.getBytes(UTF8));
+					bos.write(uriEncode(fileName).getBytes(ISO_8859_1));
 					bos.write(DISPOSITION_FILENAME_END);
 				}
 				bos.write(CRLF);
 
 				// Content Type Line
-				if (mimeType != null)
-				{
-					bos.write(TYPE_HEADER);
-					bos.write(mimeType.getBytes(UTF8));
-					bos.write(CRLF);
-				}
+				mimeType = mimeType == null ? "application/octet-stream" : mimeType;
+				bos.write(TYPE_HEADER);
+				bos.write(mimeType.getBytes(ISO_8859_1));
+				if (charset != null)
+					bos.write(("; charset=" + charset).getBytes(ISO_8859_1));
+				bos.write(CRLF);
 
 				// Content transfer encoding
 				if (encoding != null)
 				{
 					bos.write(ENCODING_HEADER);
-					bos.write(encoding.getBytes(UTF8));
+					bos.write(encoding.getBytes(ISO_8859_1));
 					bos.write(CRLF);
 				}
 				
@@ -958,9 +1068,7 @@ public final class HTTPUtils
 				throw new RuntimeException(e);
 			}
 
-			final byte[] headerBytes = bos.toByteArray();
-			
-			addPart(new Part(headerBytes, new PartData() 
+			addPart(new Part(bos.toByteArray(), new PartData() 
 			{
 				@Override
 				public long getDataLength() 
@@ -980,13 +1088,13 @@ public final class HTTPUtils
 		@Override
 		public String getContentType()
 		{
-			return "multipart/form-data";
+			return "multipart/form-data; boundary=\"" + boundaryText + "\"";
 		}
 
 		@Override
 		public String getCharset()
 		{
-			return "utf-8";
+			return null;
 		}
 
 		@Override
@@ -996,7 +1104,7 @@ public final class HTTPUtils
 		}
 
 		@Override
-		public long getLength()
+		public Long getLength()
 		{
 			return length;
 		}
@@ -1132,7 +1240,7 @@ public final class HTTPUtils
 					for (int i = 1; i < blueprint.length; i += 2)
 					{
 						this.blueprint[i] = BLUEPRINT_PART;
-						this.blueprint[i + 1] = i + 1 < blueprint.length - 1 ? BLUEPRINT_BOUNDARY_MIDDLE : BLUEPRINT_BOUNDARY_END;
+						this.blueprint[i + 1] = (i + 1) < (blueprint.length - 1) ? BLUEPRINT_BOUNDARY_MIDDLE : BLUEPRINT_BOUNDARY_END;
 					}
 				}
 				nextStream();
@@ -1225,9 +1333,9 @@ public final class HTTPUtils
 		}
 		
 		@Override
-		public long getLength()
+		public Long getLength()
 		{
-			return data.length;
+			return (long)data.length;
 		}
 		
 		@Override
@@ -1242,9 +1350,9 @@ public final class HTTPUtils
 	{
 		private String contentCharset;
 	
-		private TextContent(String contentType, String contentCharset, String contentEncoding, byte[] data)
+		private TextContent(String contentType, String contentCharset, byte[] data)
 		{
-			super(contentType, contentEncoding, data);
+			super(contentType, null, data);
 			this.contentCharset = contentCharset;
 		}
 		
@@ -1295,7 +1403,7 @@ public final class HTTPUtils
 		}
 	
 		@Override
-		public long getLength()
+		public Long getLength()
 		{
 			return file.length();
 		}
@@ -1308,11 +1416,72 @@ public final class HTTPUtils
 		
 	}
 
+	private static class StreamContent implements HTTPContent
+	{
+		private String contentType;
+		private String encodingType;
+		private String charsetType;
+		private int chunkSize;
+		private InputStream inputStream;
+		
+		private StreamContent(String contentType, String encodingType, String charsetType, int chunkSize, InputStream inputStream)
+		{
+			if (inputStream == null)
+				throw new IllegalArgumentException("stream cannot be null.");
+			if (chunkSize <= 0)
+				throw new IllegalArgumentException("chunk size cannot be 0 or less.");
+	
+			this.contentType = contentType;
+			this.encodingType = encodingType;
+			this.charsetType = charsetType;
+			this.chunkSize = chunkSize;
+			this.inputStream = inputStream;
+		}
+		
+		@Override
+		public String getContentType()
+		{
+			return contentType;
+		}
+	
+		@Override
+		public String getCharset()
+		{
+			return charsetType;
+		}
+	
+		@Override
+		public String getEncoding()
+		{
+			return encodingType;
+		}
+	
+		@Override
+		public Long getLength()
+		{
+			// Unknown length.
+			return null;
+		}
+	
+		@Override
+		public int getChunkLength() 
+		{
+			return chunkSize;
+		}
+		
+		@Override
+		public InputStream getInputStream() throws IOException
+		{
+			return inputStream;
+		}
+		
+	}
+
 	private static class FormContent extends TextContent
 	{
 		private FormContent(HTTPParameters parameters)
 		{
-			super("x-www-form-urlencoded", UTF8.displayName(), null, parameters.toString().getBytes(UTF8));
+			super("x-www-form-urlencoded", UTF8.displayName(), parameters.toString().getBytes(UTF8));
 		}
 	}
 
@@ -2722,7 +2891,7 @@ public final class HTTPUtils
 	public static HTTPContent createTextContent(String contentType, String text)
 	{
 		try {
-			return new TextContent(contentType, "utf-8", null, text.getBytes("utf-8"));
+			return new TextContent(contentType, "utf-8", text.getBytes("utf-8"));
 		} catch (UnsupportedEncodingException e) {
 			throw new RuntimeException("JVM does not support the UTF-8 charset [INTERNAL ERROR].");
 		}
@@ -2742,18 +2911,124 @@ public final class HTTPUtils
 	/**
 	 * Creates a byte blob content body for an HTTP request.
 	 * @param contentType the data's content type.
-	 * @param contentEncoding the data's encoding type (like gzip or what have you, can be null for none).
+	 * @param encodingType the data's encoding type (like gzip or what have you, can be null for none).
 	 * @param bytes the byte data.
 	 * @return a content object representing the content.
 	 */
-	public static HTTPContent createByteContent(String contentType, String contentEncoding, byte[] bytes)
+	public static HTTPContent createByteContent(String contentType, String encodingType, byte[] bytes)
 	{
-		return new BlobContent(contentType, contentEncoding, bytes);
+		return new BlobContent(contentType, encodingType, bytes);
+	}
+
+	/**
+	 * Creates an unknown-length stream for an HTTP request.
+	 * Uses the default chunk size for transfer: {@value HTTPContent#DEFAULT_CHUNK_SIZE}.
+	 * @param contentType the data's content type.
+	 * @param inputStream the stream to read from for the upload.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent createStreamContent(String contentType, InputStream inputStream)
+	{
+		return new StreamContent(contentType, null, null, HTTPContent.DEFAULT_CHUNK_SIZE, inputStream);
+	}
+
+	/**
+	 * Creates an unknown-length stream for an HTTP request.
+	 * @param contentType the data's content type.
+	 * @param chunkSize the maximum chunk size per upload segment in bytes.
+	 * @param inputStream the stream to read from for the upload.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent createStreamContent(String contentType, int chunkSize, InputStream inputStream)
+	{
+		return new StreamContent(contentType, null, null, chunkSize, inputStream);
+	}
+
+	/**
+	 * Creates an unknown-length stream for an HTTP request.
+	 * The stream is assumed to be the provided encoding - no conversion will occur.
+	 * @param contentType the data's content type.
+	 * @param encodingType the data's encoding type (like gzip or what have you, can be null for none).
+	 * @param inputStream the stream to read from for the upload.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent createStreamContent(String contentType, String encodingType, InputStream inputStream)
+	{
+		return new StreamContent(contentType, encodingType, null, HTTPContent.DEFAULT_CHUNK_SIZE, inputStream);
+	}
+
+	/**
+	 * Creates an unknown-length stream for an HTTP request.
+	 * The stream is assumed to be the provided encoding - no conversion will occur.
+	 * @param contentType the data's content type.
+	 * @param encodingType the data's encoding type (like gzip or what have you, can be null for none).
+	 * @param chunkSize the maximum chunk size per upload segment in bytes.
+	 * @param inputStream the stream to read from for the upload.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent createStreamContent(String contentType, String encodingType, int chunkSize, InputStream inputStream)
+	{
+		return new StreamContent(contentType, encodingType, null, chunkSize, inputStream);
+	}
+
+	/**
+	 * Creates an unknown-length text stream for an HTTP request.
+	 * The stream is assumed to be the provided type - no conversion will occur.
+	 * @param contentType the data's content type.
+	 * @param charsetType the charset name for the text payload (e.g. "utf-8" or "ascii").
+	 * @param inputStream the stream to read from for the upload.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent createTextStreamContent(String contentType, String charsetType, InputStream inputStream)
+	{
+		return new StreamContent(contentType, null, charsetType, HTTPContent.DEFAULT_CHUNK_SIZE, inputStream);
+	}
+
+	/**
+	 * Creates an unknown-length text stream for an HTTP request.
+	 * The stream is assumed to be the provided type and encoding - no conversion will occur.
+	 * @param contentType the data's content type.
+	 * @param encodingType the data's encoding type (like gzip or what have you, can be null for none).
+	 * @param charsetType the charset name for the text payload (e.g. "utf-8" or "ascii").
+	 * @param inputStream the stream to read from for the upload.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent createTextStreamContent(String contentType, String encodingType, String charsetType, InputStream inputStream)
+	{
+		return new StreamContent(contentType, encodingType, charsetType, HTTPContent.DEFAULT_CHUNK_SIZE, inputStream);
+	}
+
+	/**
+	 * Creates an unknown-length text stream for an HTTP request.
+	 * The stream is assumed to be the provided type and encoding - no conversion will occur.
+	 * @param contentType the data's content type.
+	 * @param charsetType the charset name for the text payload (e.g. "utf-8" or "ascii").
+	 * @param chunkSize the maximum chunk size per upload segment in bytes.
+	 * @param inputStream the stream to read from for the upload.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent createTextStreamContent(String contentType, String charsetType, int chunkSize, InputStream inputStream)
+	{
+		return new StreamContent(contentType, null, charsetType, chunkSize, inputStream);
+	}
+
+	/**
+	 * Creates an unknown-length text stream for an HTTP request.
+	 * The stream is assumed to be the provided type and encoding - no conversion will occur.
+	 * @param contentType the data's content type.
+	 * @param encodingType the data's encoding type (like gzip or what have you, can be null for none).
+	 * @param charsetType the charset name for the text payload (e.g. "utf-8" or "ascii").
+	 * @param chunkSize the maximum chunk size per upload segment in bytes.
+	 * @param inputStream the stream to read from for the upload.
+	 * @return a content object representing the content.
+	 */
+	public static HTTPContent createTextStreamContent(String contentType, String encodingType, String charsetType, int chunkSize, InputStream inputStream)
+	{
+		return new StreamContent(contentType, encodingType, charsetType, chunkSize, inputStream);
 	}
 
 	/**
 	 * Creates a file-based content body for an HTTP request.
-	 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
 	 * @param contentType the file's content type.
 	 * @param file the file to read from on send.
 	 * @return a content object representing the content.
@@ -2765,7 +3040,6 @@ public final class HTTPUtils
 
 	/**
 	 * Creates a file-based content body for an HTTP request.
-	 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
 	 * @param contentType the file's content type.
 	 * @param encodingType the data encoding type for the file's payload (e.g. "gzip" or "base64").
 	 * @param file the file to read from on send.
@@ -2779,7 +3053,6 @@ public final class HTTPUtils
 	/**
 	 * Creates a file-based content body for an HTTP request, presumably a text file.
 	 * The default system text encoding is presumed.
-	 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
 	 * @param contentType the file's content type.
 	 * @param file the file to read from on send.
 	 * @return a content object representing the content.
@@ -2792,7 +3065,6 @@ public final class HTTPUtils
 	/**
 	 * Creates file based content body for an HTTP request, presumably a text file encoded
 	 * with a specific charset.
-	 * <p>Note: This is NOT form-data content! See {@link MultipartFormContent} for that.
 	 * @param contentType the file's content type.
 	 * @param charsetType the charset name for the file's payload (e.g. "utf-8" or "ascii").
 	 * @param file the file to read from on send.
@@ -2845,7 +3117,10 @@ public final class HTTPUtils
 	 */
 	public static ThreadPoolExecutor setAsyncExecutor(ThreadPoolExecutor executor)
 	{
-		return HTTP_THREAD_POOL.getAndSet(executor);
+		synchronized (HTTP_THREAD_POOL)
+		{
+			return HTTP_THREAD_POOL.getAndSet(executor);
+		}
 	}
 	
 	/**
@@ -2894,6 +3169,10 @@ public final class HTTPUtils
 		HttpURLConnection conn = (HttpURLConnection)url.openConnection();
 		conn.setReadTimeout(socketTimeoutMillis);
 		conn.setRequestMethod(requestMethod);
+		conn.setInstanceFollowRedirects(false);
+		
+		// Accept all by default.
+		conn.setRequestProperty("Accept", "*");
 		
 		if (headers != null) for (Map.Entry<String, String> entry : headers.map.entrySet())
 			conn.setRequestProperty(entry.getKey(), entry.getValue());
@@ -2903,15 +3182,26 @@ public final class HTTPUtils
 		// set up body data.
 		if (content != null)
 		{
-			long uploadLen = content.getLength();
-			conn.setFixedLengthStreamingMode(content.getLength());
-			conn.setRequestProperty("Content-Type", content.getContentType() == null ? "application/octet-stream" : content.getContentType());
+			String contentType = content.getContentType() == null ? "application/octet-stream" : content.getContentType();
+			if (content.getCharset() != null)
+				contentType += "; charset=" + content.getCharset();
+			
+			conn.setRequestProperty("Content-Type", contentType);
+			
+			Long uploadLen = content.getLength();
+			if (uploadLen != null)
+				conn.setFixedLengthStreamingMode(content.getLength());
+			else
+				conn.setChunkedStreamingMode(content.getChunkLength());
+			
 			if (content.getEncoding() != null)
 				conn.setRequestProperty("Content-Encoding", content.getEncoding());
+			
 			conn.setDoOutput(true);
 			try (DataOutputStream dos = new DataOutputStream(conn.getOutputStream()))
 			{
 				relay(content.getInputStream(), dos, 8192, uploadLen, cancelSwitch, uploadMonitor);
+				dos.flush();
 			}
 		}
 	
@@ -2989,6 +3279,7 @@ public final class HTTPUtils
 			if (maxLength != null && maxLength >= 0)
 				maxLength -= buf;
 		}
+		out.flush();
 		return total;
 	}
 	

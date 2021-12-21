@@ -2785,7 +2785,7 @@ public final class HTTPUtils
 	{
 		StringBuilder sb = new StringBuilder();
 		byte[] bytes = s.getBytes(UTF8);
-		for (int i = 0; i < s.length(); i++)
+		for (int i = 0; i < bytes.length; i++)
 		{
 			byte b = bytes[i];
 			if (Arrays.binarySearch(URL_UNRESERVED, b) >= 0)

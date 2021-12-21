@@ -5,6 +5,7 @@
  ******************************************************************************/
 package com.blackrook.base.util;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -17,9 +18,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.SocketTimeoutException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
@@ -50,6 +52,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -534,13 +537,10 @@ public final class HTTPUtils
 		 */
 		static HTTPReader<String> STRING_CONTENT_READER = (response, cancelSwitch, monitor) ->
 		{
-			String charset;
-			if ((charset = response.getCharset()) == null)
-				charset = ISO_8859_1.displayName();
-			
+			InputStreamReader reader = openReader(response);
+
 			char[] c = new char[16384];
 			StringBuilder sb = new StringBuilder();
-			InputStreamReader reader = new InputStreamReader(response.getContentStream(), charset);
 	
 			int buf = 0;
 			while (!cancelSwitch.get() && (buf = reader.read(c)) >= 0) 
@@ -548,7 +548,7 @@ public final class HTTPUtils
 			
 			return cancelSwitch.get() ? null : sb.toString();
 		};
-		
+
 		/**
 		 * An HTTP Reader that reads the response body as byte content and returns a byte array.
 		 * <p> If the read is cancelled, this returns null.
@@ -638,10 +638,25 @@ public final class HTTPUtils
 		R onHTTPResponse(HTTPResponse response, AtomicBoolean cancelSwitch, TransferMonitor monitor) throws IOException;
 		
 		/**
+		 * Convenience method for wrapping the content stream in a reader for 
+		 * the response's charset encoding.
+		 * @param response the open response object.
+		 * @return an InputStreamReader to read from.
+		 * @throws UnsupportedEncodingException
+		 */
+		static InputStreamReader openReader(HTTPResponse response) throws UnsupportedEncodingException
+		{
+			String charset;
+			if ((charset = response.getCharset()) == null)
+				charset = ISO_8859_1.displayName();
+			return new InputStreamReader(response.getContentStream(), charset);
+		}
+		
+		/**
 		 * Creates an HTTPReader that returns a File with the response body content written to it.
 		 * The target File will be created or overwritten.
 		 * @param targetFile the target file.
-		 * @return a reader for the file.
+		 * @return a reader for downloading the file.
 		 */
 		static HTTPReader<File> createFileDownloader(final File targetFile)
 		{
@@ -660,6 +675,24 @@ public final class HTTPUtils
 				{
 					return targetFile;
 				}
+			};
+		}
+		
+		/**
+		 * Creates an HTTPReader that reads a text response line-by-line, emitting each line
+		 * to a consumer function.
+		 * @param consumer the consumer for each line.
+		 * @return a reader for continually consuming the content one line at a time.
+		 */
+		static HTTPReader<Void> createLineConsumer(final Consumer<String> consumer)
+		{
+			return (response, cancelSwitch, monitor) ->
+			{
+				BufferedReader br = new BufferedReader(openReader(response));
+				String line;
+				while ((line = br.readLine()) != null)
+					consumer.accept(line);
+				return null;
 			};
 		}
 		
@@ -802,9 +835,8 @@ public final class HTTPUtils
 		 * @param name the field name.
 		 * @param value the value.
 		 * @return itself, for chaining.
-		 * @throws IOException if the data can't be encoded.
 		 */
-		public MultipartFormContent addField(String name, String value) throws IOException
+		public MultipartFormContent addField(String name, String value)
 		{
 			return addTextPart(name, "text/plain", value);
 		}
@@ -815,9 +847,8 @@ public final class HTTPUtils
 		 * @param mimeType the mimeType of the text part.
 		 * @param text the text data.
 		 * @return itself, for chaining.
-		 * @throws IOException if the data can't be encoded.
 		 */
-		public MultipartFormContent addTextPart(String name, String mimeType, String text) throws IOException
+		public MultipartFormContent addTextPart(String name, String mimeType, String text)
 		{
 			return addDataPart(name, mimeType, null, UTF8.displayName(), null, text.getBytes(UTF8));
 		}
@@ -2204,21 +2235,21 @@ public final class HTTPUtils
 			this.redirectedURLs = null;
 		}
 		
-		// Checks if a URL pattern is valid.
-		// Returns the passed-in URL, unchanged.
+		// Checks if a URI pattern is valid.
+		// Returns the passed-in URI, unchanged.
 		private static String checkURL(String url)
 		{
-			return checkURL(url, false);
+			return checkURI(url, false);
 		}
 		
-		// Checks if a URL pattern is valid.
-		// Returns the passed-in URL, unchanged.
-		private static String checkURL(String url, boolean fromServer)
+		// Checks if a URI pattern is valid.
+		// Returns the passed-in URI, unchanged.
+		private static String checkURI(String uri, boolean fromServer)
 		{
 			try {
-				new URL(url);
-				return url;
-			} catch (MalformedURLException e) {
+				new URI(uri);
+				return uri;
+			} catch (URISyntaxException e) {
 				throw new IllegalArgumentException(fromServer ? "Redirect URL from server is malformed." : "URL is malformed.", e);
 			}
 		}
@@ -2322,7 +2353,7 @@ public final class HTTPUtils
 		 * (the content and monitor, however, if any, is reference-copied). 
 		 * @return a new HTTPRequest that is a copy of this one.
 		 */
-		public HTTPRequest copy()
+		public final HTTPRequest copy()
 		{
 			HTTPRequest out = new HTTPRequest();
 			out.method = this.method;
@@ -2334,10 +2365,10 @@ public final class HTTPUtils
 			out.defaultCharsetEncoding = this.defaultCharsetEncoding;
 			out.content = this.content;
 			out.monitor = this.monitor;
-			if (redirectedURLs == null)
+			if (this.redirectedURLs == null)
 				out.redirectedURLs = null;
 			else
-				out.redirectedURLs = new LinkedList<>(out.redirectedURLs);
+				out.redirectedURLs = new LinkedList<>(this.redirectedURLs);
 			return out;
 		}
 
@@ -2350,7 +2381,7 @@ public final class HTTPUtils
 		 * @throws IllegalStateException if the new URL has already been seen previously in earlier redirects.
 		 * @throws IllegalArgumentException if the URL string is malformed.
 		 */
-		public HTTPRequest copyRedirect(String newURL)
+		public final HTTPRequest copyRedirect(String newURL)
 		{
 			return copyRedirect(null, newURL);
 		}
@@ -2365,7 +2396,7 @@ public final class HTTPUtils
 		 * @throws IllegalStateException if the new URL has already been seen previously in earlier redirects.
 		 * @throws IllegalArgumentException if the URL string is malformed.
 		 */
-		public HTTPRequest copyRedirect(String newMethod, String newURL)
+		public final HTTPRequest copyRedirect(String newMethod, String newURL)
 		{
 			HTTPRequest out = copy();
 			if (out.redirectedURLs == null)
@@ -2373,12 +2404,26 @@ public final class HTTPUtils
 			if (out.redirectedURLs.contains(out.url))
 				throw new IllegalStateException("Redirect loop detected - " + out.url + " wad already visited.");
 			out.redirectedURLs.add(out.url);
-			out.url = checkURL(newURL, true);
+			// FIXME: Does not work on relative redirects.
+			out.url = checkURI(newURL, true);
 			if (newMethod != null)
 				out.method = newMethod;
 			if (!(out.method.equalsIgnoreCase(HTTP_METHOD_POST) || out.method.equalsIgnoreCase(HTTP_METHOD_PUT)))
 				out.content(null);
 			return out;
+		}
+		
+		/**
+		 * Replaces the headers on this request.
+		 * @param entries the header entries.
+		 * @return this request, for chaining.
+		 * @see HTTPUtils#headers(java.util.Map.Entry...)
+		 */
+		@SafeVarargs
+		public final HTTPRequest headers(Map.Entry<String, String> ... entries)
+		{
+			this.headers = HTTPUtils.headers(entries);
+			return this;
 		}
 		
 		/**
@@ -2389,7 +2434,7 @@ public final class HTTPUtils
 		 * @return this request, for chaining.
 		 * @see HTTPUtils#headers(java.util.Map.Entry...)
 		 */
-		public HTTPRequest headers(HTTPHeaders headers)
+		public final HTTPRequest setHeaders(HTTPHeaders headers)
 		{
 			Objects.requireNonNull(headers);
 			this.headers = headers.copy();
@@ -2402,7 +2447,7 @@ public final class HTTPUtils
 		 * @return this request, for chaining.
 		 * @see HTTPHeaders#merge(HTTPHeaders)
 		 */
-		public HTTPRequest addHeaders(HTTPHeaders headers)
+		public final HTTPRequest addHeaders(HTTPHeaders headers)
 		{
 			Objects.requireNonNull(headers);
 			this.headers.merge(headers);
@@ -2416,9 +2461,22 @@ public final class HTTPUtils
 		 * @return this request, for chaining.
 		 * @see HTTPHeaders#merge(HTTPHeaders)
 		 */
-		public HTTPRequest setHeader(String header, String value)
+		public final HTTPRequest setHeader(String header, String value)
 		{
 			this.headers.setHeader(header, value);
+			return this;
+		}
+		
+		/**
+		 * Replaces the parameters on this request.
+		 * @param entries the parameter entries.
+		 * @return this request, for chaining.
+		 * @see HTTPUtils#parameters(java.util.Map.Entry...)
+		 */
+		@SafeVarargs
+		public final HTTPRequest parameters(Map.Entry<String, String> ... entries)
+		{
+			this.parameters = HTTPUtils.parameters(entries);
 			return this;
 		}
 		
@@ -2430,7 +2488,7 @@ public final class HTTPUtils
 		 * @see HTTPUtils#parameters(java.util.Map.Entry...)
 		 * @return this request, for chaining.
 		 */
-		public HTTPRequest parameters(HTTPParameters parameters)
+		public final HTTPRequest setParameters(HTTPParameters parameters)
 		{
 			Objects.requireNonNull(parameters);
 			this.parameters = parameters.copy();
@@ -2443,7 +2501,7 @@ public final class HTTPUtils
 		 * @return this request, for chaining.
 		 * @see HTTPHeaders#merge(HTTPHeaders)
 		 */
-		public HTTPRequest addParameters(HTTPParameters parameters)
+		public final HTTPRequest addParameters(HTTPParameters parameters)
 		{
 			Objects.requireNonNull(parameters);
 			this.parameters.merge(parameters);
@@ -2457,7 +2515,7 @@ public final class HTTPUtils
 		 * @param value the parameter value.
 		 * @return this request, for chaining.
 		 */
-		public HTTPRequest setParameter(String key, Object value)
+		public final HTTPRequest setParameter(String key, Object value)
 		{
 			this.parameters.setParameter(key, value);
 			return this;
@@ -2470,7 +2528,7 @@ public final class HTTPUtils
 		 * @param values the parameter values.
 		 * @return this request, for chaining.
 		 */
-		public HTTPRequest setParameter(String key, Object... values)
+		public final HTTPRequest setParameter(String key, Object... values)
 		{
 			this.parameters.setParameter(key, values);
 			return this;
@@ -2482,7 +2540,7 @@ public final class HTTPUtils
 		 * @return this request, for chaining.
 		 * @see HTTPUtils#cookie(String, String)
 		 */
-		public HTTPRequest addCookie(HTTPCookie cookie)
+		public final HTTPRequest addCookie(HTTPCookie cookie)
 		{
 			this.cookies.add(cookie);
 			return this;
@@ -2500,7 +2558,7 @@ public final class HTTPUtils
 		 * @see #createFormContent(HTTPParameters)
 		 * @see #createMultipartContent()
 		 */
-		public HTTPRequest content(HTTPContent content) 
+		public final HTTPRequest content(HTTPContent content) 
 		{
 			this.content = content;
 			return this;
@@ -2512,7 +2570,7 @@ public final class HTTPUtils
 		 * @param timeoutMillis the timeout in milliseconds.
 		 * @return this request, for chaining.
 		 */
-		public HTTPRequest timeout(int timeoutMillis) 
+		public final HTTPRequest timeout(int timeoutMillis) 
 		{
 			this.timeoutMillis = timeoutMillis;
 			return this;
@@ -2524,7 +2582,7 @@ public final class HTTPUtils
 		 * @param defaultCharsetEncoding the new encoding name.
 		 * @return this request, for chaining.
 		 */
-		public HTTPRequest defaultCharsetEncoding(String defaultCharsetEncoding) 
+		public final HTTPRequest defaultCharsetEncoding(String defaultCharsetEncoding) 
 		{
 			this.defaultCharsetEncoding = defaultCharsetEncoding;
 			return this;
@@ -2535,7 +2593,7 @@ public final class HTTPUtils
 		 * @param monitor the monitor to call.
 		 * @return this request, for chaining.
 		 */
-		public HTTPRequest uploadMonitor(TransferMonitor monitor) 
+		public final HTTPRequest uploadMonitor(TransferMonitor monitor) 
 		{
 			this.monitor = monitor;
 			return this;
@@ -2548,7 +2606,7 @@ public final class HTTPUtils
 		 * @param autoRedirect true 
 		 * @return this request, for chaining.
 		 */
-		public HTTPRequest setAutoRedirect(boolean autoRedirect) 
+		public final HTTPRequest setAutoRedirect(boolean autoRedirect) 
 		{
 			this.autoRedirect = autoRedirect;
 			return this;
@@ -2570,7 +2628,7 @@ public final class HTTPUtils
 		 * @throws SocketTimeoutException if the socket read times out.
 		 * @throws ProtocolException if the request method is incorrect, or not an HTTP URL.
 		 */
-		public HTTPResponse send() throws IOException
+		public final HTTPResponse send() throws IOException
 		{
 			return send((AtomicBoolean)null);
 		}
@@ -2593,7 +2651,7 @@ public final class HTTPUtils
 		 * @throws SocketTimeoutException if the socket read times out.
 		 * @throws ProtocolException if the request method is incorrect, or not an HTTP URL.
 		 */
-		public HTTPResponse send(AtomicBoolean cancelSwitch) throws IOException
+		public final HTTPResponse send(AtomicBoolean cancelSwitch) throws IOException
 		{
 			HTTPResponse out;
 			HTTPRequest current = this;
@@ -2622,7 +2680,7 @@ public final class HTTPUtils
 		 * @throws SocketTimeoutException if the socket read times out.
 		 * @throws ProtocolException if the requestMethod is incorrect, or not an HTTP URL.
 		 */
-		public <T> T send(HTTPReader<T> reader) throws IOException
+		public final <T> T send(HTTPReader<T> reader) throws IOException
 		{
 			return send(null, reader);
 		}
@@ -2639,7 +2697,7 @@ public final class HTTPUtils
 		 * @throws SocketTimeoutException if the socket read times out.
 		 * @throws ProtocolException if the requestMethod is incorrect, or not an HTTP URL.
 		 */
-		public <T> T send(AtomicBoolean cancelSwitch, HTTPReader<T> reader) throws IOException
+		public final <T> T send(AtomicBoolean cancelSwitch, HTTPReader<T> reader) throws IOException
 		{
 			try (HTTPResponse response = send(cancelSwitch))
 			{
@@ -2668,7 +2726,7 @@ public final class HTTPUtils
 		 * </code></pre>
 		 * @return a future for inspecting later, containing the open response object.
 		 */
-		public HTTPRequestFuture<HTTPResponse> sendAsync()
+		public final HTTPRequestFuture<HTTPResponse> sendAsync()
 		{
 			HTTPRequestFuture<HTTPResponse> out = new HTTPRequestFuture.Response(this);
 			fetchExecutor().execute(out);
@@ -2697,7 +2755,7 @@ public final class HTTPUtils
 		 * @param reader the reader to use to read the response.
 		 * @return a future for inspecting later, containing the decoded object.
 		 */
-		public <T> HTTPRequestFuture<T> sendAsync(HTTPReader<T> reader)
+		public final <T> HTTPRequestFuture<T> sendAsync(HTTPReader<T> reader)
 		{
 			HTTPRequestFuture<T> out = new HTTPRequestFuture.ObjectResponse<T>(this, reader);
 			fetchExecutor().execute(out);

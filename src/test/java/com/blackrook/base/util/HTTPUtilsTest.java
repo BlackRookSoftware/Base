@@ -9,34 +9,50 @@ import com.blackrook.base.util.HTTPUtils.HTTPReader;
 import com.blackrook.base.util.HTTPUtils.HTTPRequest;
 
 import static com.blackrook.base.util.HTTPUtils.*;
+import static com.blackrook.base.util.HTTPUtils.HTTPContent.*;
 
+/**
+ * Uses a local instance of httpbin.org to test.
+ * @author Matthew Tropiano
+ */
 @SuppressWarnings("unused")
 public final class HTTPUtilsTest
 {
+	private static final String TEST_URL_BASE = "http://localhost:8080";
+	
 	public static void main(String[] args) throws InterruptedException, ExecutionException, IOException 
 	{
-		HTTPResponse response = absoluteredirect().send();
+		HTTPResponse response = links().send();
 		System.out.println(response.getRedirectHistory());
+		System.out.println(response.getStatusCode() + ": " + response.getStatusMessage());
 		response.read(HTTPReader.createLineConsumer(System.out::println));
+		//response.read(HTTPReader.createByteConsumer(System.out::print));
 	}
 	
-	private static HTTPRequest httpget()
+	/* ==================================================================== */
+
+	private static String url(String path)
 	{
-		return HTTPRequest.get("http://localhost:8080/get?a=5&b=7");
+		return TEST_URL_BASE + path;
+	}
+	
+	/* ==================================================================== */
+
+	private static HTTPRequest httpGet()
+	{
+		return HTTPRequest.get(url("/get?a=5&b=7"));
 	}
 
-	private static HTTPRequest httpput()
+	private static HTTPRequest httpPut()
 	{
-		return HTTPRequest.put("http://localhost:8080/put")
-			.content(
-				HTTPUtils.createTextContent("application/json", "{\"x\":3, \"y\":\"farts\"}")
-			)
+		return HTTPRequest.put(url("/put"))
+			.content(createTextContent("application/json", "{\"x\":3, \"y\":\"farts\"}"))
 		;
 	}
 
-	private static HTTPRequest httppost()
+	private static HTTPRequest httpPost()
 	{
-		return HTTPRequest.post("http://localhost:8080/post")
+		return HTTPRequest.post(url("/post"))
 			.headers(
 				entry("X-BUTTS", "è,é,ê,ë"),
 				entry("Accept", "application/json")
@@ -57,9 +73,9 @@ public final class HTTPUtilsTest
 		;
 	}
 	
-	private static HTTPRequest httppatch()
+	private static HTTPRequest httpPatch()
 	{
-		return HTTPRequest.post("http://localhost:8080/patch?a=5&b=7")
+		return HTTPRequest.post(url("/patch?a=5&b=7"))
 			.headers(
 				entry("X-HTTP-Method-Override", "PATCH")
 			)
@@ -69,24 +85,73 @@ public final class HTTPUtilsTest
 		;
 	}
 
-	private static HTTPRequest httpdelete()
+	private static HTTPRequest httpDelete()
 	{
-		return HTTPRequest.delete("http://localhost:8080/delete?a=5&b=7");
+		return HTTPRequest.delete(url("/delete"))
+			.parameters(
+				entry("a", 5), 
+				entry("b", 7)
+			)
+		;
 	}
 
+	/* ==================================================================== */
+
+	private static HTTPRequest auth()
+	{
+		return HTTPRequest.get(url("/basic-auth/butt/butts"));
+	}
+	
+	/* ==================================================================== */
+
+	private static HTTPRequest delayGet()
+	{
+		return HTTPRequest.get(url("/delay/2"));
+	}
+	
+	private static HTTPRequest delayPost()
+	{
+		return HTTPRequest.post(url("/delay/2"));
+	}
+
+	private static HTTPRequest delayPut()
+	{
+		return HTTPRequest.put(url("/delay/2"));
+	}
+
+	private static HTTPRequest delayDelete()
+	{
+		return HTTPRequest.delete(url("/delay/2"));
+	}
+
+	private static HTTPRequest drip()
+	{
+		return HTTPRequest.get(url("/drip"))
+			.parameters(entry("numbytes", 100))
+			.timeout(0)
+		;
+	}
+
+	private static HTTPRequest links()
+	{
+		return HTTPRequest.get(url("/links/10/0"));
+	}
+
+	/* ==================================================================== */
+	
 	private static HTTPRequest redirect()
 	{
-		return HTTPRequest.get("http://localhost:8080/redirect/7");
+		return HTTPRequest.get(url("/redirect/7"));
 	}
 
 	private static HTTPRequest absoluteredirect()
 	{
-		return HTTPRequest.get("http://localhost:8080/absolute-redirect/7");
+		return HTTPRequest.get(url("/absolute-redirect/7"));
 	}
 
 	private static HTTPRequest relativeredirect()
 	{
-		return HTTPRequest.get("http://localhost:8080/relative-redirect/7");
+		return HTTPRequest.get(url("/relative-redirect/7"));
 	}
 
 }

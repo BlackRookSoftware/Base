@@ -5,12 +5,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A map that is used to produce unique instances of
- * very mutable objects. 
+ * A map that is used to produce unique instances of equality-having objects.
  * <p> The direct need for this is being able to use mutual exclusion 
  * (<code>synchronized</code>) on objects that would have strict equality
  * but tend to have a lack of uniqueness in reference, like Strings or Integers
- * or other common classes or boxed primitives.
+ * or other common classes or boxed primitives. Since synchronization happens
+ * on references and not "values," a structure such as this may need to be employed 
+ * in order to use mutual exclusion or wait/notify on equal values tied to a common reference.
  * @author Matthew Tropiano
  * @param <T> the type that this map holds.
  */

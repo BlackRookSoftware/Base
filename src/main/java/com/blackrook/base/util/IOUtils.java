@@ -750,8 +750,9 @@ public final class IOUtils
 	
 		/**
 		 * Redirects standard out.
-		 * @param newOut the new output stream to redirect STDOUT to.
+		 * @param newOut the new output stream to redirect STDOUT to. Null is acceptable.
 		 * @return this, for chaining.
+		 * @thorws
 		 */
 		public ProcessWrapper stdout(OutputStream newOut)
 		{
@@ -764,7 +765,7 @@ public final class IOUtils
 		
 		/**
 		 * Redirects standard out.
-		 * @param newOut the new writer to redirect STDOUT to.
+		 * @param newOut the new writer to redirect STDOUT to. Null is acceptable.
 		 * @return this, for chaining.
 		 */
 		public ProcessWrapper stdout(Writer newOut)
@@ -778,7 +779,7 @@ public final class IOUtils
 		
 		/**
 		 * Redirects standard out.
-		 * @param newOut the new print stream to redirect STDOUT to.
+		 * @param newOut the new print stream to redirect STDOUT to. Null is acceptable.
 		 * @return this, for chaining.
 		 */
 		public ProcessWrapper stdout(PrintStream newOut)
@@ -793,7 +794,7 @@ public final class IOUtils
 		/**
 		 * Redirects standard out.
 		 * @param encoding the output encoding.
-		 * @param newOut the new writer to redirect STDOUT to.
+		 * @param newOut the new writer to redirect STDOUT to. Null is acceptable.
 		 * @return this, for chaining.
 		 */
 		public ProcessWrapper stdout(Charset encoding, Writer newOut)
@@ -808,7 +809,7 @@ public final class IOUtils
 		/**
 		 * Redirects standard out.
 		 * @param encoding the output encoding.
-		 * @param newOut the new print stream to redirect STDOUT to.
+		 * @param newOut the new print stream to redirect STDOUT to. Null is acceptable.
 		 * @return this, for chaining.
 		 */
 		public ProcessWrapper stdout(Charset encoding, PrintStream newOut)
@@ -822,7 +823,7 @@ public final class IOUtils
 		
 		/**
 		 * Redirects standard error.
-		 * @param newErr the new output stream to redirect STDERR to.
+		 * @param newErr the new output stream to redirect STDERR to. Null is acceptable.
 		 * @return this, for chaining.
 		 */
 		public ProcessWrapper stderr(OutputStream newErr)
@@ -836,7 +837,7 @@ public final class IOUtils
 		
 		/**
 		 * Redirects standard error.
-		 * @param newErr the new writer to redirect STDERR to.
+		 * @param newErr the new writer to redirect STDERR to. Null is acceptable.
 		 * @return this, for chaining.
 		 */
 		public ProcessWrapper stderr(Writer newErr)
@@ -850,7 +851,7 @@ public final class IOUtils
 		
 		/**
 		 * Redirects standard error.
-		 * @param newErr the new print stream to redirect STDERR to.
+		 * @param newErr the new print stream to redirect STDERR to. Null is acceptable.
 		 * @return this, for chaining.
 		 */
 		public ProcessWrapper stderr(PrintStream newErr)
@@ -865,7 +866,7 @@ public final class IOUtils
 		/**
 		 * Redirects standard error.
 		 * @param encoding the output encoding.
-		 * @param newErr the new writer to redirect STDERR to.
+		 * @param newErr the new writer to redirect STDERR to. Null is acceptable.
 		 * @return this, for chaining.
 		 */
 		public ProcessWrapper stderr(Charset encoding, Writer newErr)
@@ -880,7 +881,7 @@ public final class IOUtils
 		/**
 		 * Redirects standard error.
 		 * @param encoding the output encoding.
-		 * @param newErr the new print stream to redirect STDERR to.
+		 * @param newErr the new print stream to redirect STDERR to. Null is acceptable.
 		 * @return this, for chaining.
 		 */
 		public ProcessWrapper stderr(Charset encoding, PrintStream newErr)
@@ -894,7 +895,7 @@ public final class IOUtils
 		
 		/**
 		 * Redirects standard in.
-		 * @param newIn the new input stream to redirect STDIN from.
+		 * @param newIn the new input stream to redirect STDIN from. Null is acceptable.
 		 * @return this, for chaining.
 		 */
 		public ProcessWrapper stdin(InputStream newIn)
@@ -917,14 +918,13 @@ public final class IOUtils
 		}
 		
 		/**
-		 * Waits for the wrapped process to exit as well as associated stream piping threads.
-		 * @return the process return code.
+		 * Waits for the threads responsible for piping input/output to end.
+		 * You should wait for the process to end before calling this.
 		 * @throws InterruptedException if the current thread is interrupted by another 
 		 * 		thread while it is waiting, then the wait is ended and an InterruptedException is thrown.
 		 */
-		public int waitFor() throws InterruptedException
+		public void join() throws InterruptedException
 		{
-			int out = process.waitFor();
 			if (stdOutThread != null)
 			{
 				stdOutThread.join();
@@ -940,6 +940,20 @@ public final class IOUtils
 				stdInThread.join();
 				stdInThread = null;
 			}
+		}
+		
+		/**
+		 * Waits for the wrapped process to exit as well as associated stream piping threads.
+		 * @return the process return code.
+		 * @throws InterruptedException if the current thread is interrupted by another 
+		 * 		thread while it is waiting, then the wait is ended and an InterruptedException is thrown.
+		 * @see Process#waitFor()
+		 * @see #join()
+		 */
+		public int waitFor() throws InterruptedException
+		{
+			int out = process.waitFor();
+			join();
 			done = true;
 			return out;
 		}

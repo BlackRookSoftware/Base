@@ -1906,7 +1906,7 @@ public final class HTTPUtils
 		 */
 		public HTTPCookie expires(long dateMillis)
 		{
-			flags.add("Expires=" + date(dateMillis));
+			expires(new Date(dateMillis));
 			return this;
 		}
 		
@@ -2117,8 +2117,8 @@ public final class HTTPUtils
 		{
 			List<String> list;
 			map.put(key, (list = new LinkedList<>()));
-			for (Object v : values)
-				list.add(String.valueOf(v));
+			for (int i = 0; i < values.length; i++)
+				list.add(String.valueOf(values[i]));
 			return this;
 		}
 		
@@ -2507,8 +2507,8 @@ public final class HTTPUtils
 			if (!isRedirect())
 				throw new IllegalStateException("Response is not a redirect type.");
 			
-			String location = getHeader("Location");
-			if (location == null)
+			String location;
+			if ((location = getHeader("Location")) == null)
 				throw new IllegalStateException("Response provided no redirect location.");
 			
 			HTTPRequest out;
@@ -3153,7 +3153,7 @@ public final class HTTPUtils
 	 */
 	public static String date(long dateMillis)
 	{
-		return ISO_DATE.get().format(new Date(dateMillis));
+		return date(new Date(dateMillis));
 	}
 	
 	/**

@@ -2973,9 +2973,9 @@ public final class HTTPUtils
 		
 		/**
 		 * Sets if auto-redirecting happens.
-		 * All requests 
+		 * All requests have this enabled (true) by default.
 		 * Note that not every redirect can be changed into an actionable redirect.
-		 * @param autoRedirect true 
+		 * @param autoRedirect true to handle auto-redirectable cases, false to not.
 		 * @return this request, for chaining.
 		 */
 		public final HTTPRequest setAutoRedirect(boolean autoRedirect) 

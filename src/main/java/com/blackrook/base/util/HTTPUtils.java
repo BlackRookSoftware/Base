@@ -2938,7 +2938,7 @@ public final class HTTPUtils
 		
 		/**
 		 * Sets the timeout for this request.
-		 * If this is not set, the current default, {@link HTTPUtils#DEFAULT_TIMEOUT_MILLIS}, is the default.
+		 * If this is not set, the current default, 5000, is the default.
 		 * @param timeoutMillis the timeout in milliseconds.
 		 * @return this request, for chaining.
 		 */

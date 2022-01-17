@@ -420,12 +420,6 @@ public final class AsyncFactory
 		return total;
 	}
 
-	private static void close(AutoCloseable c)
-	{
-		if (c == null) return;
-		try { c.close(); } catch (Exception e){}
-	}
-
 	/**
 	 * A listener interface for all instances.
 	 * @param <T> instance return type.
@@ -655,7 +649,7 @@ public final class AsyncFactory
 		/**
 		 * Flags this Cancellable for cancellation.
 		 */
-		public final void cancel()
+		public void cancel()
 		{
 			isCancelled = true;
 		}
@@ -949,9 +943,6 @@ public final class AsyncFactory
 				relay(in, out);
 			} catch (IOException e) {
 				exceptionConsumer.accept(e);
-			} finally {
-				close(in);
-				close(out);
 			}
 		}
 	}

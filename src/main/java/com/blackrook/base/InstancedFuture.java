@@ -5,6 +5,7 @@
  ******************************************************************************/
 package com.blackrook.base;
 
+import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -35,11 +36,26 @@ public abstract class InstancedFuture<T> implements RunnableFuture<T>
 	private T finishedResult;
 
 	/**
-	 * Creates a new InstancedFuture with no callable payload.
+	 * Creates a new InstancedFuture.
+	 * @param runnable the Runnable to run.
 	 */
-	public InstancedFuture()
+	public InstancedFuture(final Runnable runnable)
 	{
-		this(null);
+		this(runnable, null);
+	}
+	
+
+	/**
+	 * Creates a new InstancedFuture.
+	 * @param runnable the Runnable to run.
+	 * @param result the result of the runnable. 
+	 */
+	public InstancedFuture(final Runnable runnable, final T result)
+	{
+		this(() -> {
+			runnable.run(); 
+			return result;
+		});
 	}
 	
 	/**
@@ -51,7 +67,7 @@ public abstract class InstancedFuture<T> implements RunnableFuture<T>
 		this.cancelled = false;
 		this.waitMutex = new Object();
 
-		this.callable = callable;
+		this.callable = Objects.requireNonNull(callable, "Callable cannot be null.");
 		this.executor = null;
 		this.done = false;
 		this.running = false;
@@ -346,7 +362,7 @@ public abstract class InstancedFuture<T> implements RunnableFuture<T>
 	 */
 	protected T execute() throws Throwable
 	{
-		return callable != null ? callable.call() : null;
+		return callable.call();
 	}
 
 	// Checks for livelocks.

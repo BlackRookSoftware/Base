@@ -104,7 +104,7 @@ public class ProcessCallable implements Callable<Integer>
 	};
 	
 	/** A null reader. */
-	public static final Reader READER_NULL = new Reader()
+	private static final Reader READER_NULL = new Reader()
 	{
 		@Override
 		public int read(char[] cbuf, int off, int len) throws IOException 

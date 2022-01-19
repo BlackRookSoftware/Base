@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2021 Black Rook Software
+ * Copyright (c) 2019-2022 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -20,17 +20,39 @@ import java.util.Map;
  * @author Matthew Tropiano
  * @param <T> the type that this map holds.
  */
-public class IdMap<T> 
+public class UniqueMap<T> 
 {
+	private static final int DEFAULT_CAPACITY = 16;
+	private static final float DEFAULT_REHASH = 0.75f;
+	
 	/** Reference map. */
 	private Map<T, WeakReference<T>> refMap;
 	
 	/**
-	 * Creates a new IdMap.
+	 * Creates a new UniqueMap.
 	 */
-	public IdMap()
+	public UniqueMap()
 	{
-		this.refMap = new HashMap<>();
+		this(DEFAULT_CAPACITY, DEFAULT_REHASH);
+	}
+	
+	/**
+	 * Creates a new UniqueMap with an initial capacity.
+	 * @param capacity the map's initial capacity.
+	 */
+	public UniqueMap(int capacity)
+	{
+		this(capacity, DEFAULT_REHASH);
+	}
+	
+	/**
+	 * Creates a new UniqueMap with an initial capacity and rehash ratio.
+	 * @param capacity the map's initial capacity.
+	 * @param rehash the map's rehashing ratio.
+	 */
+	public UniqueMap(int capacity, float rehash)
+	{
+		this.refMap = new HashMap<>(capacity, rehash);
 	}
 	
 	/**

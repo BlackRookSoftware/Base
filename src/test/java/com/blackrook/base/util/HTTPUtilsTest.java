@@ -27,11 +27,10 @@ public final class HTTPUtilsTest
 	
 	public static void main(String[] args) throws InterruptedException, ExecutionException, IOException 
 	{
-		HTTPResponse response = links().send();
+		HTTPResponse response = cookiesSetNameValue("a", "farts").send();
 		System.out.println(response.getRedirectHistory());
 		System.out.println(response.getStatusCode() + ": " + response.getStatusMessage());
-		response.read(HTTPReader.createLineConsumer(System.out::println));
-		//response.read(HTTPReader.createByteConsumer(System.out::print));
+		System.out.println(response.read(HTTPReader.createLineConsumer(System.out::println)));
 	}
 	
 	/* ==================================================================== */
@@ -158,5 +157,26 @@ public final class HTTPUtilsTest
 	{
 		return HTTPRequest.get(url("/relative-redirect/7"));
 	}
+
+	/* ==================================================================== */
+	
+	private static HTTPRequest cookies()
+	{
+		return HTTPRequest.get(url("/cookies"));
+	}
+
+	private static HTTPRequest cookiesSet(HTTPParameters parameters)
+	{
+		return HTTPRequest.get(url("/cookies/set"));
+	}
+	
+	private static HTTPRequest cookiesSetNameValue(String name, String value)
+	{
+		return HTTPRequest.get(url("/cookies/set/{name}/{value}"
+			.replace("{name}", name)
+			.replace("{value}", value)
+		));
+	}
+
 
 }

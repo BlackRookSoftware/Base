@@ -120,6 +120,12 @@ public final class HTTPUtils
 		return cancelSwitch.get() ? null : response.statusCode;
 	};
 
+	/** Headers reader. */
+	private static final HTTPReader<Map<String, List<String>>> HTTPREADER_HEADERS = (response, cancelSwitch, monitor) ->
+	{
+		return cancelSwitch.get() ? null : response.getHeaders();
+	};
+
 	/** String content reader. */
 	private static final HTTPReader<String> HTTPREADER_STRING_CONTENT = (response, cancelSwitch, monitor) ->
 	{
@@ -665,6 +671,17 @@ public final class HTTPUtils
 		static HTTPReader<Integer> createStatusReader()
 		{
 			return HTTPREADER_STATUS;
+		}
+
+		/**
+		 * An HTTP Reader that just returns the header mapping of the response.
+		 * This returns a singleton instance of the reader.
+		 * <p> If the read is cancelled, this returns null.
+		 * @return the reader for reading the status code.
+		 */
+		static HTTPReader<Map<String, List<String>>> createHeaderReader()
+		{
+			return HTTPREADER_HEADERS;
 		}
 
 		/**
@@ -1890,11 +1907,31 @@ public final class HTTPUtils
 	 */
 	public static class HTTPCookie
 	{
+		private static final String FLAG_EXPIRES = "Expires=";
+		private static final String FLAG_MAXAGE = "Max-Age=";
+		private static final String FLAG_DOMAIN = "Domain=";
+		private static final String FLAG_PATH = "Path=";
+		private static final String FLAG_SAMESITE = "SameSite=";
+		private static final String FLAG_SECURE = "Secure";
+		private static final String FLAG_HTTPONLY = "HttpOnly";
+		
 		public enum SameSiteMode
 		{
 			STRICT,
 			LAX,
 			NONE;
+			
+			private static final Map<String, SameSiteMode> MAP_VALUES = new TreeMap<String, SameSiteMode>(String.CASE_INSENSITIVE_ORDER) 
+			{
+				private static final long serialVersionUID = 8257488945177195081L;
+				{
+					for (SameSiteMode mode : SameSiteMode.values())
+					{
+						String name = mode.name();
+						put(name.charAt(0) + name.substring(1).toLowerCase(), mode);
+					}
+				}
+			};
 		}
 
 		private String key;
@@ -1909,13 +1946,51 @@ public final class HTTPUtils
 		}
 		
 		/**
+		 * Parses a new {@link HTTPCookie} object.
+		 * @param content the cookie header content.
+		 * @return a new cookie object.
+		 */
+		public static HTTPCookie parse(String content)
+		{
+			// Kinda lazy: relies on well-formed cookie.
+			try {
+				String[] splits = content.split("\\;\s*");
+				
+				String[] keyval = splits[0].split("=");
+				HTTPCookie out = new HTTPCookie(keyval[0], keyval[1]);
+				
+				for (int i = 1; i < splits.length; i++)
+				{
+					String flag = splits[i];
+					if (flag.startsWith(FLAG_EXPIRES))
+						out.expires(ISO_DATE.get().parse(flag.substring(FLAG_EXPIRES.length())));
+					else if (flag.startsWith(FLAG_MAXAGE))
+						out.maxAge(Long.parseLong(flag.substring(FLAG_MAXAGE.length())));
+					else if (flag.startsWith(FLAG_DOMAIN))
+						out.domain(flag.substring(FLAG_DOMAIN.length()));
+					else if (flag.startsWith(FLAG_PATH))
+						out.path(flag.substring(FLAG_PATH.length()));
+					else if (flag.startsWith(FLAG_SAMESITE))
+						out.sameSite(SameSiteMode.MAP_VALUES.get(flag.substring(FLAG_SAMESITE.length())));
+					else if (flag.equals(FLAG_SECURE))
+						out.secure();
+					else if (flag.equals(FLAG_HTTPONLY))
+						out.httpOnly();
+				}
+				return out; 
+			} catch (Exception e) {
+				throw new RuntimeException("Exception occurred on cookie parse.", e);
+			}
+		}
+
+		/**
 		 * Sets the cookie expiry date. 
 		 * @param date the expiry date.
 		 * @return this, for chaining.
 		 */
 		public HTTPCookie expires(Date date)
 		{
-			flags.add("Expires=" + date(date));
+			flags.add(FLAG_EXPIRES + date(date));
 			return this;
 		}
 		
@@ -1937,7 +2012,7 @@ public final class HTTPUtils
 		 */
 		public HTTPCookie maxAge(long seconds)
 		{
-			flags.add("Max-Age=" + seconds);
+			flags.add(FLAG_MAXAGE + seconds);
 			return this;
 		}
 		
@@ -1948,7 +2023,7 @@ public final class HTTPUtils
 		 */
 		public HTTPCookie domain(String value)
 		{
-			flags.add("Domain=" + value);
+			flags.add(FLAG_DOMAIN + value);
 			return this;
 		}
 		
@@ -1959,27 +2034,7 @@ public final class HTTPUtils
 		 */
 		public HTTPCookie path(String value)
 		{
-			flags.add("Path=" + value);
-			return this;
-		}
-
-		/**
-		 * Sets the cookie for only secure travel. 
-		 * @return this, for chaining.
-		 */
-		public HTTPCookie secure()
-		{
-			flags.add("Secure");
-			return this;
-		}
-
-		/**
-		 * Sets the cookie for only top-level HTTP requests (not JS/AJAX). 
-		 * @return this, for chaining.
-		 */
-		public HTTPCookie httpOnly()
-		{
-			flags.add("HttpOnly");
+			flags.add(FLAG_PATH + value);
 			return this;
 		}
 
@@ -1990,8 +2045,28 @@ public final class HTTPUtils
 		 */
 		public HTTPCookie sameSite(SameSiteMode mode)
 		{
-			String name = mode.name();
-			flags.add("SameSite=" + name.charAt(0) + name.substring(1).toLowerCase());
+			String name = Objects.requireNonNull(mode).name();
+			flags.add(FLAG_SAMESITE + name.charAt(0) + name.substring(1).toLowerCase());
+			return this;
+		}
+
+		/**
+		 * Sets the cookie for only secure travel. 
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie secure()
+		{
+			flags.add(FLAG_SECURE);
+			return this;
+		}
+
+		/**
+		 * Sets the cookie for only top-level HTTP requests (not JS/AJAX). 
+		 * @return this, for chaining.
+		 */
+		public HTTPCookie httpOnly()
+		{
+			flags.add(FLAG_HTTPONLY);
 			return this;
 		}
 
@@ -2411,7 +2486,7 @@ public final class HTTPUtils
 
 		/**
 		 * Checks if the this response can be automatically actioned upon in terms of resolving server-directed redirects.
-		 * This object can build a redirect request if the status code is NOT 300, 304, or 305, since that requires more of an intelligent decision.
+		 * This object can build a redirect request if the status code is NOT 300, 304, nor 305, since that requires more of an intelligent decision.
 		 * <p> NOTE: This will not redirect a request that has a redirect in the content body (for instance, an HTML meta tag).
 		 * It must be a status code and <code>Location</code> header.
 		 * @return true if and only if the response status code has defined redirect guidelines, false otherwise.
@@ -2517,6 +2592,7 @@ public final class HTTPUtils
 		
 		/**
 		 * Builds a request that fulfills a redirect, but only if this response is a redirect status.
+		 * Any <code>Set-Cookie</code> headers from this response will be copied over into <code>Add-Cookie</code> headers in the request.
 		 * @return a new request that would fulfill a redirect response.
 		 * @throws IllegalStateException if this response is not a redirect, or a 300, 304, or 305 
 		 * 		status code that would not warrant a remote redirect nor specific handling, or if a redirect loop has been detected.
@@ -2554,6 +2630,9 @@ public final class HTTPUtils
 					out = getRequest().copyRedirect(HTTP_METHOD_GET, location);
 					break;
 			}
+			
+			for (String cookie : headers.getOrDefault("Set-Cookie", Collections.emptyList()))
+				out.addCookie(HTTPCookie.parse(cookie));
 			
 			return out;
 		}
@@ -3047,7 +3126,7 @@ public final class HTTPUtils
 		{
 			HTTPResponse out = null;
 			HTTPRequest current = this;
-			while (cancelSwitch.get())
+			while (!cancelSwitch.get())
 			{
 				out = httpFetch(current, cancelSwitch);
 				if (out == null) // cancelled before send or read.
@@ -3317,6 +3396,16 @@ public final class HTTPUtils
 	}
 	
 	/**
+	 * Parses a new {@link HTTPCookie} object.
+	 * @param headerContent the cookie header content.
+	 * @return a new cookie object.
+	 */
+	public static HTTPCookie parseCookie(String headerContent)
+	{
+		return HTTPCookie.parse(headerContent);
+	}
+	
+	/**
 	 * Starts a new {@link HTTPHeaders} object.
 	 * @param entries the list of entries to add.
 	 * @return a new header object.
@@ -3433,7 +3522,7 @@ public final class HTTPUtils
 		if (headers != null) for (Map.Entry<String, String> entry : headers.map.entrySet())
 			conn.setRequestProperty(entry.getKey(), entry.getValue());
 		for (HTTPCookie cookie : request.cookies)
-			conn.addRequestProperty("Set-Cookie", cookie.toString());
+			conn.addRequestProperty("Cookie", cookie.toString());
 	
 		// set up body data.
 		if (content != null)

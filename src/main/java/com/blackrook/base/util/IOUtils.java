@@ -26,6 +26,41 @@ public final class IOUtils
 	private static int RELAY_BUFFER_SIZE = 8192;
 	/** The input wrapper used by getLine(). */
 	private static BufferedReader SYSTEM_IN_READER;
+	
+	/** A null outputstream. */
+	private static final OutputStream OUTPUTSTREAM_NULL = new OutputStream() 
+	{
+		@Override
+		public void write(int b) throws IOException
+		{
+			// Do nothing.
+		}
+		
+		@Override
+		public void write(byte[] b) throws IOException
+		{
+			// Do nothing.
+		}
+	
+		@Override
+		public void write(byte[] b, int off, int len) throws IOException 
+		{
+			// Do nothing.
+		}
+	};
+	
+	/** A null inputstream. */
+	private static final InputStream INPUTSTREAM_NULL = new InputStream() 
+	{
+		@Override
+		public int read() throws IOException
+		{
+			return -1;
+		}
+	};
+
+	/** A null file. */
+	private static final File NULL_FILE = new File(System.getProperty("os.name").contains("Windows") ? "NUL" : "/dev/null");
 
 	private IOUtils() {}
 	
@@ -328,6 +363,30 @@ public final class IOUtils
 		return out;
 	}
 
+	/**
+	 * @return a null output stream, where all writes are accepted and not used.
+	 */
+	public static OutputStream getNullOutputStream()
+	{
+		return OUTPUTSTREAM_NULL;
+	}
+
+	/**
+	 * @return a null input stream, where all reads result in an end-of-stream.
+	 */
+	public static InputStream getNullInputStream()
+	{
+		return INPUTSTREAM_NULL;
+	}	
+	
+	/**
+	 * @return a handle to the null file for this platform.
+	 */
+	public static File getNullFile()
+	{
+		return NULL_FILE;
+	}	
+	
 	/**
 	 * Attempts to close a {@link Closeable} object.
 	 * If the object is null, this does nothing.

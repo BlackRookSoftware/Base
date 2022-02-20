@@ -11,91 +11,251 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.RunnableFuture;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
  * A single instance of a spawned, potentially asynchronous executable task.
  * Note that this class is a type of {@link RunnableFuture} - this can be used in places
  * that {@link Future}s can also be used.
+ * <p>
+ * The functions that may be attached to an InstancedFuture as listeners/subscribers are called in this guaranteed order:
+ * <ul>
+ * <li>{@link InstanceListener#onStart(InstancedFuture)}</li>
+ * <li>{@link #call()}</li>
+ * <li>subscription.onResult</li>
+ * <li>subscription.onError</li>
+ * <li>subscription.onComplete</li>
+ * <li>{@link InstanceListener#onEnd(InstancedFuture)}</li>
+ * </ul>
+ * After those functions get called, any threads waiting for a fetcher function, 
+ * i.e. {@link #get()}, {@link #result()}, {@link #waitForDone()}, {@link #join()}, can continue.
  * @param <T> the result type.
  */
 public abstract class InstancedFuture<T> implements RunnableFuture<T>
 {
+	private static final AtomicLong DEFAULT_THREADFACTORY_ID = new AtomicLong(0L);
+	private static final ThreadFactory DEFAULT_THREADFACTORY = 
+		(runnable) -> new Thread(runnable, "InstancedFuture-" + DEFAULT_THREADFACTORY_ID.getAndIncrement());
+	
 	// Locks
 	private Object waitMutex;
 
-	// State
+	// Fields
 	private Callable<T> callable;
-	private Thread executor;
-	private boolean done;
-	private boolean running;
-	protected boolean cancelled;
+	private InstanceListener<T> listener;
+	private Subscription<T> subscription;
+	
+	// State
 	private Throwable exception;
 	private T finishedResult;
 
-	/**
-	 * Creates a new InstancedFuture.
-	 * @param runnable the Runnable to run.
-	 */
-	public InstancedFuture(final Runnable runnable)
-	{
-		this(runnable, null);
-	}
-	
-
-	/**
-	 * Creates a new InstancedFuture.
-	 * @param runnable the Runnable to run.
-	 * @param result the result of the runnable. 
-	 */
-	public InstancedFuture(final Runnable runnable, final T result)
-	{
-		this(() -> {
-			runnable.run(); 
-			return result;
-		});
-	}
+	private volatile Thread executor;
+	private volatile boolean running;
+	private volatile boolean done;
 	
 	/**
 	 * Creates a new InstancedFuture.
 	 * @param callable the callable to call.
+	 * @param listener the listener for instance activity.
+	 * @param subscription the subscription to attach, if any.
 	 */
-	public InstancedFuture(Callable<T> callable)
+	protected InstancedFuture(Callable<T> callable, InstanceListener<T> listener, Subscription<T> subscription)
 	{
-		this.cancelled = false;
 		this.waitMutex = new Object();
-
+		
 		this.callable = Objects.requireNonNull(callable, "Callable cannot be null.");
-		this.executor = null;
-		this.done = false;
-		this.running = false;
+		this.listener = listener;
+		this.subscription = subscription;
+		
 		this.exception = null;
 		this.finishedResult = null;
+
+		this.executor = null;
+		this.running = false;
+		this.done = false;
 	}
 	
+	/**
+	 * Runs a runnable in a new, started Thread.
+	 * The Thread is named <code>InstancedFuture-id</code> and is not a daemon thread.
+	 * @param runnable the runnable to execute.
+	 * @return an instanced future.
+	 */
+	public static InstancedFuture<Void> spawn(Runnable runnable)
+	{
+		return spawn(asCallable(null, runnable));
+	}
+	
+	/**
+	 * Runs a runnable in a new, started Thread.
+	 * The Thread is created with the provided ThreadFactory.
+	 * @param threadFactory the factory for creating the new thread.
+	 * @param runnable the runnable to execute.
+	 * @return an instanced future.
+	 */
+	public static InstancedFuture<Void> spawn(ThreadFactory threadFactory, Runnable runnable)
+	{
+		return spawn(threadFactory, asCallable(null, runnable));
+	}
+	
+	/**
+	 * Runs a runnable via a {@link ThreadPoolExecutor}.
+	 * @param executor the executor to add the Callable to.
+	 * @param runnable the runnable to execute.
+	 * @return an instanced future.
+	 */
+	public static InstancedFuture<Void> spawn(ThreadPoolExecutor executor, Runnable runnable)
+	{
+		return spawn(executor, asCallable(null, runnable));
+	}
+	
+	/**
+	 * Runs a runnable in a new, started Thread.
+	 * The Thread is named <code>InstancedFuture-id</code> and is not a daemon thread.
+	 * @param <T> the return type.
+	 * @param result the result to return on a successful execution of the provided Runnable.
+	 * @param runnable the runnable to execute.
+	 * @return an instanced future.
+	 */
+	public static <T> InstancedFuture<T> spawn(T result, Runnable runnable)
+	{
+		return spawn(DEFAULT_THREADFACTORY, asCallable(result, runnable));
+	}
+	
+	/**
+	 * Runs a runnable in a new, started Thread.
+	 * The Thread is created with the provided ThreadFactory.
+	 * @param <T> the return type.
+	 * @param threadFactory the factory for creating the new thread.
+	 * @param result the result to return on a successful execution of the provided Runnable.
+	 * @param runnable the runnable to execute.
+	 * @return an instanced future.
+	 */
+	public static <T> InstancedFuture<T> spawn(ThreadFactory threadFactory, T result, Runnable runnable)
+	{
+		return spawn(threadFactory, asCallable(result, runnable));
+	}
+	
+	/**
+	 * Runs a runnable via a {@link ThreadPoolExecutor}.
+	 * @param <T> the return type.
+	 * @param executor the executor to add the Callable to.
+	 * @param result the result to return on a successful execution of the provided Runnable.
+	 * @param runnable the runnable to execute.
+	 * @return an instanced future.
+	 */
+	public static <T> InstancedFuture<T> spawn(ThreadPoolExecutor executor, T result, Runnable runnable)
+	{
+		return spawn(executor, asCallable(result, runnable));
+	}
+	
+	/**
+	 * Runs a callable in a new, started Thread.
+	 * The Thread is named <code>InstancedFuture-id</code> and is not a daemon thread.
+	 * @param <T> the Callable return type.
+	 * @param callable the Callable to execute.
+	 * @return an instanced future.
+	 */
+	public static <T> InstancedFuture<T> spawn(Callable<T> callable)
+	{
+		return instance(callable).spawn();
+	}
+	
+	/**
+	 * Runs a callable in a new, started Thread.
+	 * The Thread is created with the provided ThreadFactory.
+	 * @param <T> the Callable return type.
+	 * @param threadFactory the factory for creating the new thread.
+	 * @param callable the Callable to execute.
+	 * @return an instanced future.
+	 */
+	public static <T> InstancedFuture<T> spawn(ThreadFactory threadFactory, Callable<T> callable)
+	{
+		return instance(callable).spawn(threadFactory);
+	}
+	
+	/**
+	 * Runs a callable via a {@link ThreadPoolExecutor}.
+	 * @param <T> the Callable return type.
+	 * @param executor the executor to add the Callable to.
+	 * @param callable the Callable to execute.
+	 * @return an instanced future.
+	 */
+	public static <T> InstancedFuture<T> spawn(ThreadPoolExecutor executor, Callable<T> callable)
+	{
+		return instance(callable).spawn(executor);
+	}
+	
+	/**
+	 * Waits for all of the provided instances to complete, then continues execution.
+	 * @param <T> the return type of each of the instances.
+	 * @param instances the list of instances.
+	 */
+	@SafeVarargs
+	public static <T> void join(InstancedFuture<T> ... instances)
+	{
+		for (int i = 0; i < instances.length; i++)
+			instances[i].join();
+	}
+
+	/**
+	 * Creates a new instance builder.
+	 * @param <T> the Callable return type.
+	 * @param callable the Callable that gets called in the instance.
+	 * @return a new instance builder.
+	 */
+	public static <T> Builder<T> instance(Callable<T> callable)
+	{
+		return new Builder<>(callable);
+	}
+
 	@Override
 	public final void run()
 	{
-		executor = Thread.currentThread();
 		done = false;
 		running = true;
+		executor = Thread.currentThread();
+
 		exception = null;
 		finishedResult = null;
 
-		try {
-			finishedResult = execute();
-		} catch (Throwable e) {
-			exception = e;
-		}
-		
-		executor = null;
-		running = false;
-		done = true;
-		synchronized (waitMutex)
+		try 
 		{
-			waitMutex.notifyAll();
+			if (listener != null)
+				listener.onStart(this);
+			
+			try {
+				finishedResult = call();
+			} catch (Throwable e) {
+				exception = e;
+			}
+
+			if (subscription != null)
+				subscription.emit(finishedResult, exception);
+			
+			if (listener != null)
+				listener.onEnd(this);
+		} 
+		catch (Throwable e) 
+		{
+			throw new RuntimeException("Subscription or listener function threw an uncaught exception.", e);
+		} 
+		finally 
+		{
+			executor = null;
+			running = false;
+			done = true;
+			
+			synchronized (waitMutex)
+			{
+				waitMutex.notifyAll();
+			}
 		}
 	}
 
@@ -326,12 +486,18 @@ public abstract class InstancedFuture<T> implements RunnableFuture<T>
      * @return {@code false} if the task could not be cancelled,
      * typically because it has already completed normally;
      * {@code true} otherwise
+     * @see #cancel(boolean)
+     * @see Future#cancel(boolean)
      */
 	public final boolean cancel()
 	{
 		return cancel(false);
 	}
 
+	/**
+	 * Cancels this task using the policy of the implemented method, {@link Future#cancel(boolean)},
+	 * HOWEVER, this will be cancelled if and ONLY if the encapsulated task is of type {@link Cancellable}.
+	 */
 	@Override
 	public final boolean cancel(boolean mayInterruptIfRunning)
 	{
@@ -339,38 +505,258 @@ public abstract class InstancedFuture<T> implements RunnableFuture<T>
 		{
 			return false;
 		}
-		else
+		else if (callable instanceof Cancellable)
 		{
+			((Cancellable<T>)callable).cancel();
 			if (mayInterruptIfRunning && executor != null)
 				executor.interrupt();
-			cancelled = true;
 			join();
 			return true;
+		}
+		else
+		{
+			return false;
 		}
 	}
 
 	@Override
 	public final boolean isCancelled() 
 	{
-		return cancelled;
+		return (callable instanceof Cancellable) && ((Cancellable<T>)callable).isCancelled();
 	}
 	
 	/**
-	 * Executes this instance's callable payload.
-	 * @return the result from the execution.
-	 * @throws Throwable for any exception that may occur.
+	 * Calls the encapsulated Callable, by default.
+	 * Called by {@link #run()}.
+	 * @return the result of the call. 
+	 * @throws Exception if an exception occurs.
+	 * @see Callable#call()
 	 */
-	protected T execute() throws Throwable
+	protected final T call() throws Exception
 	{
 		return callable.call();
 	}
-
+	
+	// Wrap Runnable to Callable.
+	private static <T> Callable<T> asCallable(T result, Runnable runnable)
+	{
+		return () -> { runnable.run(); return result; };
+	}
+	
 	// Checks for livelocks.
 	private void liveLockCheck()
 	{
 		if (executor == Thread.currentThread())
 			throw new IllegalStateException("Attempt to make executing thread wait for this result.");
 	}
+	
+	/**
+	 * Builder class for {@link InstancedFuture}s.
+	 * @param <T> the return type of the encapsulated Callable.
+	 */
+	public static final class Builder<T>
+	{
+		private Callable<T> callable;
+		private InstanceListener<T> listener;
+		private Consumer<T> onResult;
+		private Consumer<Throwable> onError;
+		private Runnable onComplete;
+		
+		private Builder(Callable<T> callable)
+		{
+			this.callable = callable;
+		}
+		
+		/**
+		 * Adds a listener to this instance.
+		 * @param listener the listener to add.
+		 * @return this builder.
+		 */
+		public Builder<T> listener(InstanceListener<T> listener)
+		{
+			this.listener = listener;
+			return this;
+		}
+		
+		/**
+		 * Adds the function to call when the instance completes successfully. 
+		 * @param onResult the function to call with the result value.
+		 * @return this builder.
+		 */
+		public Builder<T> onResult(Consumer<T> onResult)
+		{
+			this.onResult = onResult;
+			return this;
+		}
+		
+		/**
+		 * Adds the function to call when the instance throws an exception. 
+		 * @param onError the function to call with the exception/throwable.
+		 * @return this builder.
+		 */
+		public Builder<T> onError(Consumer<Throwable> onError)
+		{
+			this.onError = onError;
+			return this;
+		}
+		
+		/**
+		 * Adds the function to always call when the instance finishes (after result or exception). 
+		 * @param onComplete the function to call after the result or exception is processed.
+		 * @return this builder.
+		 * @see #onResult(Consumer)
+		 * @see #onError(Consumer)
+		 */
+		public Builder<T> onComplete(Runnable onComplete)
+		{
+			this.onComplete = onComplete;
+			return this;
+		}
+		
+		/**
+		 * Spawns a runnable in a new, started Thread.
+		 * The Thread is named <code>InstancedFuture-id</code> and is not a daemon thread.
+		 * @return an instanced future.
+		 */
+		public InstancedFuture<T> spawn()
+		{
+			return spawn(DEFAULT_THREADFACTORY);
+		}
 
+		/**
+		 * Spawns a runnable in a new, started Thread.
+		 * The Thread is created with the provided ThreadFactory.
+		 * @param threadFactory the factory for creating the new thread.
+		 * @return an instanced future.
+		 */
+		public InstancedFuture<T> spawn(ThreadFactory threadFactory)
+		{
+			InstancedFuture<T> out;
+			(threadFactory.newThread(out = new Created<>(callable, listener, new Subscription<>(onResult, onError, onComplete)))).start();
+			return out;
+		}
+		
+		/**
+		 * Spawns a runnable in a new, started Thread.
+		 * The Thread is created with the provided ThreadFactory.
+		 * @param executor the factory for creating the new thread.
+		 * @return an instanced future.
+		 */
+		public InstancedFuture<T> spawn(ThreadPoolExecutor executor)
+		{
+			InstancedFuture<T> out;
+			executor.execute(out = new Created<>(callable, listener, new Subscription<>(onResult, onError, onComplete)));
+			return out;
+		}
+	}
+	
+	/**
+	 * A {@link Callable} that can be flagged for cancellation.
+	 * The code in {@link #call()} must check to see if it has been cancelled in order to
+	 * honor the request, but does not need to guarantee it. 
+	 * @param <T> the result type.
+	 */
+	public static abstract class Cancellable<T> implements Callable<T>
+	{
+		private boolean isCancelled;
+
+		/**
+		 * Creates the Cancellable.
+		 */
+		public Cancellable()
+		{
+			isCancelled = false;
+		}
+
+		/**
+		 * Flags this Cancellable for cancellation.
+		 */
+		public void cancel()
+		{
+			isCancelled = true;
+		}
+		
+		/**
+		 * Checks if this has been flagged for cancellation.
+		 * @return true if so, false if not.
+		 * @see #cancel()
+		 */
+		public final boolean isCancelled()
+		{
+			return isCancelled;
+		}
+
+		@Override
+		public abstract T call() throws Exception;
+
+	}
+	
+	/**
+	 * Subscription class type.
+	 * @param <T> the Future return type.
+	 */
+	public static class Subscription<T>
+	{
+		private Consumer<T> onResult;
+		private Consumer<Throwable> onError;
+		private Runnable onComplete;
+		
+		private Subscription(Consumer<T> onResult, Consumer<Throwable> onError, Runnable onComplete)
+		{
+			this.onResult = onResult;
+			this.onError = onError;
+			this.onComplete = onComplete;
+		}
+		
+		private void emit(T result, Throwable exception)
+		{
+			if (exception != null)
+			{
+				if (onError != null)
+					onError.accept(exception);
+			}
+			else 
+			{ 
+				if (onResult != null)
+					onResult.accept(result);
+			}
+			
+			if (onComplete != null)
+				onComplete.run();
+		}
+	}
+
+	/**
+	 * A listener interface for all instances.
+	 * The purpose of this listener is to report on instances starting or ending,
+	 * mostly for monitoring behavior in a work queue or executor.
+	 * @param <T> instance return type.
+	 */
+	public static interface InstanceListener<T>
+	{
+		/**
+		 * Called on Instance start. 
+		 * NOTE: The Instance, is this state, is NOT safe to inspect via blocking methods, and {@link InstancedFuture#isDone()} is guaranteed to return false.
+		 * @param instance the instance that this is attached to.
+		 */
+		void onStart(InstancedFuture<T> instance);
+	
+		/**
+		 * Called on Instance end.
+		 * The Instance is safe to inspect, and {@link InstancedFuture#isDone()} is guaranteed to return true.
+		 * @param instance the instance that this is attached to.
+		 */
+		void onEnd(InstancedFuture<T> instance);
+	}
+
+	/** Under-the-covers instance. */
+	private static class Created<T> extends InstancedFuture<T>
+	{
+		public Created(Callable<T> callable, InstanceListener<T> listener, Subscription<T> subscription) 
+		{
+			super(callable, listener, subscription);
+		}
+	}
+	
 }
 

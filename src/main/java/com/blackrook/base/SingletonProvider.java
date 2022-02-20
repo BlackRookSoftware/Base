@@ -18,7 +18,7 @@ public class SingletonProvider<T>
 	/** The creator function. */
 	private Supplier<T> creator;
 	/** The encapsulated instance. */
-	private T instance;
+	private volatile T instance;
 	
 	/** Constructing thread (state). */
 	private Thread constructorThread;

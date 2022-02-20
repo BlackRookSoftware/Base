@@ -780,13 +780,14 @@ public class ProcessCallable implements Callable<Integer>
 		private Object waitMutex;
 		private Thread executor;
 		private Process process;
-		private Integer result;
 		private Throwable exception;
 		private Throwable outException;
 		private Throwable errException;
 		private Throwable inException;
-		private boolean done;
-		private boolean cancelled;
+
+		private volatile Integer result;
+		private volatile boolean done;
+		private volatile boolean cancelled;
 
 		private Instance()
 		{

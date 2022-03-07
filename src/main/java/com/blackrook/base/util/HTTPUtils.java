@@ -2618,7 +2618,7 @@ public final class HTTPUtils
 	}
 
 	/**
-	 * A request builder, as an alternative to calling the "http" methods directly.
+	 * A request builder.
 	 */
 	public static final class HTTPRequest
 	{

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2020 Black Rook Software
+ * Copyright (c) 2019-2022 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -74,7 +74,7 @@ public final class ComponentManager
 	public @interface ComponentConstructor {}
 
 	/**
-	 * This annotation denotes that this component will have only one instance and share it among its dependencies.
+	 * This annotation denotes that this component will have only one instance and shares it among its dependencies.
 	 * <p>This must be used with a {@link Component}-annotated class or a {@link ComponentProvider}-annotated method in a {@link ComponentFactory}. 
 	 */
 	@Target({ElementType.TYPE, ElementType.METHOD})
@@ -82,7 +82,7 @@ public final class ComponentManager
 	public @interface Singleton {}
 
 	/**
-	 * This annotation denotes that this component is constructed for each dependent class.
+	 * This annotation denotes that this component is created for each dependent class, such that its reference is always unique.
 	 * <p>This must be used with a {@link Component}-annotated class or a {@link ComponentProvider}-annotated method in a {@link ComponentFactory}. 
 	 */
 	@Target({ElementType.TYPE, ElementType.METHOD})

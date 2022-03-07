@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2021 Black Rook Software
+ * Copyright (c) 2019-2022 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -7,14 +7,17 @@ package com.blackrook.base;
 
 import java.io.File;
 import java.io.InputStream;
+import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -45,9 +48,12 @@ public class Loader<T>
 	/** The loader listener. */
 	private LoaderErrorListener<T> errorListener;
 	
+	/** Mutex map. */
+	private Map<String, WeakReference<String>> mutexMap;
+	
 	/** Thread pool for async loads. */
 	private AtomicReference<ThreadPoolExecutor> threadPool;
-
+	
 	/**
 	 * A loader function for loading an object via a name.
 	 * @param <T> the object type.
@@ -62,6 +68,38 @@ public class Loader<T>
 		 * @throws Exception if an exception occurs.
 		 */
 		T load(String name) throws Exception;
+	}
+	
+	/**
+	 * A loader function for loading an object via a file.
+	 * @param <T> the object type.
+	 */
+	@FunctionalInterface
+	public interface FileLoaderFunction<T>
+	{
+		/**
+		 * Loads an object using a name.
+		 * @param file the file to use for loading an object.
+		 * @return a loaded object or null if not loaded.
+		 * @throws Exception if an exception occurs.
+		 */
+		T load(File file) throws Exception;
+	}
+	
+	/**
+	 * A loader function for loading an object via an input stream.
+	 * @param <T> the object type.
+	 */
+	@FunctionalInterface
+	public interface StreamLoaderFunction<T>
+	{
+		/**
+		 * Loads an object using a name.
+		 * @param in the input stream to use for loading an object.
+		 * @return a loaded object or null if not loaded.
+		 * @throws Exception if an exception occurs.
+		 */
+		T load(InputStream in) throws Exception;
 	}
 	
 	/**
@@ -81,6 +119,7 @@ public class Loader<T>
 	
 	/**
 	 * Creates a loader that always returns a single object. 
+	 * @param <T> The object type returned.
 	 * @param object the object to always return.
 	 * @return a new loader function that uses the working directory as a root.
 	 */
@@ -91,35 +130,37 @@ public class Loader<T>
 
 	/**
 	 * Creates an object loader that treats the object name as a path to a file from the working directory. 
-	 * @param fileLoader the function that loads the source file (after it is confirmed to be a non-directory file that exists).
 	 * @param <T> The object type returned.
+	 * @param fileLoader the function that loads the source file (after it is confirmed to be a non-directory file that exists).
 	 * @return a new loader function that uses the working directory as a root.
 	 */
-	public static <T> LoaderFunction<T> createFileLoader(Function<File, T> fileLoader)
+	public static <T> LoaderFunction<T> createFileLoader(FileLoaderFunction<T> fileLoader)
 	{
 		return createFileLoader(new File("."), fileLoader);
 	}
 
 	/**
 	 * Creates an object loader that treats the object name as a path to a file. 
+	 * @param <T> The object type returned.
 	 * @param directoryPath the root directory path for loading images.
 	 * @param fileLoader the function that loads the source file (after it is confirmed to be a non-directory file that exists).
 	 * @return a new loader function that uses the provided directory as a root.
 	 * @throws IllegalArgumentException if the provided file is null or not a directory. 
 	 */
-	public static <T> LoaderFunction<T> createFileLoader(final String directoryPath, Function<File, T> fileLoader)
+	public static <T> LoaderFunction<T> createFileLoader(final String directoryPath, FileLoaderFunction<T> fileLoader)
 	{
 		return createFileLoader(new File(directoryPath), fileLoader);
 	}
 
 	/**
 	 * Creates an object loader that treats the object name as a path to a file. 
+	 * @param <T> The object type returned.
 	 * @param directory the root directory for loading images.
 	 * @param fileLoader the function that loads the source file (after it is confirmed to be a non-directory file that exists).
 	 * @return a new loader function that uses the provided directory as a root.
 	 * @throws IllegalArgumentException if the provided file is null or not a directory. 
 	 */
-	public static <T> LoaderFunction<T> createFileLoader(final File directory, Function<File, T> fileLoader)
+	public static <T> LoaderFunction<T> createFileLoader(final File directory, FileLoaderFunction<T> fileLoader)
 	{
 		if (directory == null || directory.isDirectory())
 			throw new IllegalArgumentException("Provided file is not a directory.");
@@ -129,49 +170,54 @@ public class Loader<T>
 			File file = new File(directory.getPath() + "/" + path);
 			if (!file.exists() || file.isDirectory())
 				return null;
-			return fileLoader.apply(file);
+			return fileLoader.load(file);
 		};
 	}
 	
 	/**
 	 * Creates an object loader that treats the object name as a path to a classpath resource (from the current classloader). 
-	 * @param fileLoader the function that loads the source stream (after it is confirmed to exist).
+	 * @param <T> The object type returned.
+	 * @param streamLoader the function that loads the source stream (after it is confirmed to exist).
 	 * @return a new loader function that uses the provided string as a resource path prefix.
 	 * @throws IllegalArgumentException if the provided file is null or not a directory. 
 	 */
-	public static <T> LoaderFunction<T> createResourceLoader(Function<InputStream, T> fileLoader)
+	public static <T> LoaderFunction<T> createResourceLoader(StreamLoaderFunction<T> streamLoader)
 	{
-		return createResourceLoader(Thread.currentThread().getContextClassLoader(), "", fileLoader);
+		return createResourceLoader(Thread.currentThread().getContextClassLoader(), "", streamLoader);
 	}
 	
 	/**
 	 * Creates an object loader that treats the object name as a path to a classpath resource (from the current classloader). 
+	 * @param <T> The object type returned.
 	 * @param prefix the root path for loading from classpath resources.
-	 * @param fileLoader the function that loads the source stream (after it is confirmed to exist).
+	 * @param streamLoader the function that loads the source stream (after it is confirmed to exist).
 	 * @return a new loader function that uses the provided string as a resource path prefix.
 	 * @throws IllegalArgumentException if the provided file is null or not a directory. 
 	 */
-	public static <T> LoaderFunction<T> createResourceLoader(final String prefix, Function<InputStream, T> fileLoader)
+	public static <T> LoaderFunction<T> createResourceLoader(final String prefix, StreamLoaderFunction<T> streamLoader)
 	{
-		return createResourceLoader(Thread.currentThread().getContextClassLoader(), prefix, fileLoader);
+		return createResourceLoader(Thread.currentThread().getContextClassLoader(), prefix, streamLoader);
 	}
 	
 	/**
 	 * Creates an object loader that treats the object name as a path to a classpath resource. 
+	 * @param <T> The object type returned.
 	 * @param loader the classloader to use.
 	 * @param prefix the root path for loading from classpath resources.
-	 * @param fileLoader the function that loads the source stream (after it is confirmed to exist).
+	 * @param streamLoader the function that loads the source stream (after it is confirmed to exist).
 	 * @return a new loader function that uses the provided string as a resource path prefix.
 	 * @throws IllegalArgumentException if the provided file is null or not a directory. 
 	 */
-	public static <T> LoaderFunction<T> createResourceLoader(final ClassLoader loader, final String prefix, Function<InputStream, T> fileLoader)
+	public static <T> LoaderFunction<T> createResourceLoader(final ClassLoader loader, final String prefix, StreamLoaderFunction<T> streamLoader)
 	{
 		return (path) ->
 		{
 			InputStream in = null;
 			try {
 				in = loader.getResourceAsStream(prefix + path);
-				return fileLoader.apply(in);
+				if (in == null)
+					return null;
+				return streamLoader.load(in);
 			} finally {
 				if (in != null) in.close();
 			}
@@ -193,6 +239,7 @@ public class Loader<T>
 		this.errorNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 		this.nameMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 		this.loaderFunctions = Arrays.copyOf(functions, functions.length);
+		this.mutexMap = new HashMap<>();
 		this.errorListener = null;
 	}
 
@@ -227,7 +274,7 @@ public class Loader<T>
 	 */
 	public Loader<T> setObject(String name, T object)
 	{
-		synchronized (object) 
+		synchronized (nameMap) 
 		{
 			nameMap.put(name, object);
 		}
@@ -249,28 +296,35 @@ public class Loader<T>
 		
 		T object = null;
 		
-		synchronized (loaderFunctions)
+		try 
 		{
-			// Early outs for waiting threads.
-			if (errorNames.contains(name))
-				return null;
-			if (nameMap.containsKey(name))
-				return nameMap.get(name);
-			
-			for (int i = 0; i < loaderFunctions.length; i++)
+			synchronized (uniqueKey(name))
 			{
-				try
+				// Early outs for waiting threads.
+				if (errorNames.contains(name))
+					return null;
+				if (nameMap.containsKey(name))
+					return nameMap.get(name);
+				
+				for (int i = 0; i < loaderFunctions.length; i++)
 				{
-					if ((object = loaderFunctions[i].load(name)) != null)
-						break;
-				} 
-				catch (Exception e) 
-				{
-					if (errorListener != null)
-						errorListener.onLoaderError(loaderFunctions[i], e);
-					continue;
+					try
+					{
+						if ((object = loaderFunctions[i].load(name)) != null)
+							break;
+					} 
+					catch (Exception e) 
+					{
+						if (errorListener != null)
+							errorListener.onLoaderError(loaderFunctions[i], e);
+						continue;
+					}
 				}
 			}
+		} 
+		finally 
+		{
+			releaseKey(name);
 		}
 		
 		if (object == null)
@@ -282,10 +336,7 @@ public class Loader<T>
 		}
 		else
 		{
-			synchronized (nameMap)
-			{
-				nameMap.put(name, object);
-			}
+			setObject(name, object);
 		}
 		
 		return object;
@@ -300,10 +351,10 @@ public class Loader<T>
 	 * @see #getObject(String)
 	 * @see #setAsyncExecutor(ThreadPoolExecutor)
 	 */
-	public LoaderFuture getObjectAsync(String name)
+	public LoaderFuture<T> getObjectAsync(String name)
 	{
-		LoaderFuture out;
-		fetchExecutor().execute(out = new LoaderFuture(name));
+		LoaderFuture<T> out;
+		fetchExecutor().execute(out = new LoaderFuture<>(this, name));
 		return out;
 	}
 	
@@ -388,6 +439,27 @@ public class Loader<T>
 		return out;
 	}
 
+	// Fetch a unique id suitable for mutex.
+	private String uniqueKey(String name)
+	{
+		WeakReference<String> out;
+		synchronized (mutexMap)
+		{
+			if ((out = mutexMap.get(name)) == null)
+				mutexMap.put(name, out = new WeakReference<String>(name));
+		}
+		return out.get();
+	}
+
+	// Releases a mutex.
+	private void releaseKey(String name)
+	{
+		synchronized (mutexMap)
+		{
+			mutexMap.remove(name);
+		}
+	}
+	
 	/**
 	 * The default executor to use for sending async requests.
 	 */
@@ -418,10 +490,13 @@ public class Loader<T>
 	 * A single instance of a spawned, potentially asynchronous executable task.
 	 * Note that this class is a type of {@link RunnableFuture} - this can be used in places
 	 * that {@link Future}s can also be used.
+	 * @param <T> the return type.
 	 */
-	public class LoaderFuture implements RunnableFuture<T>
+	public static class LoaderFuture<T> implements RunnableFuture<T>
 	{
-		// Locks
+		protected Loader<T> loader;
+		protected boolean cancelled;
+		private Throwable exception;
 		private Object waitMutex;
 
 		// State
@@ -429,16 +504,15 @@ public class Loader<T>
 		private Thread executor;
 		private boolean done;
 		private boolean running;
-		protected boolean cancelled;
-		private Throwable exception;
 		private T finishedResult;
 
 		/**
 		 * Creates a new InstancedFuture.
 		 * @param name the loader name.
 		 */
-		public LoaderFuture(String name)
+		private LoaderFuture(Loader<T> loader, String name)
 		{
+			this.loader = loader;
 			this.cancelled = false;
 			this.waitMutex = new Object();
 
@@ -687,7 +761,7 @@ public class Loader<T>
 		 */
 		protected T execute() throws Throwable
 		{
-			return getObject(name);
+			return loader.getObject(name);
 		}
 
 		// Checks for livelocks.

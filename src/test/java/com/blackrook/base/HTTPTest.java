@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2020 Black Rook Software
+ * Copyright (c) 2019-2022 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -11,7 +11,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-import com.blackrook.base.util.HTTPUtils;
 import com.blackrook.base.util.HTTPUtils.HTTPContent;
 
 public final class HTTPTest
@@ -19,8 +18,7 @@ public final class HTTPTest
 		
 	public static void main(String[] args) throws IOException
 	{
-		HTTPContent content = HTTPUtils.createFileContent("text/plain", new File("LICENSE.txt"));
-				
+		HTTPContent content = HTTPContent.createTextFileContent("text/plain", new File("LICENSE.txt"));
 		try (FileOutputStream fos = new FileOutputStream(new File("junk.txt")); InputStream in = content.getInputStream())
 		{
 			relay(in, fos, 8192, -1);

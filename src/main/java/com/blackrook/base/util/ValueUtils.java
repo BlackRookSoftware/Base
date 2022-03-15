@@ -17,14 +17,16 @@ public final class ValueUtils
 	
 	/**
 	 * Attempts to parse a boolean from a string.
-	 * If the string is null, this returns false.
+	 * If the string is empty or null, this returns null.
 	 * If the string does not equal "true" (case ignored), this returns false.
 	 * @param s the input string.
 	 * @return the interpreted boolean.
 	 */
-	public static boolean parseBoolean(String s)
+	public static Boolean parseBoolean(String s)
 	{
-		if (s == null || !s.equalsIgnoreCase("true"))
+		if (isStringEmpty(s))
+			return null;
+		else if (!s.equalsIgnoreCase("true"))
 			return false;
 		else
 			return true;
@@ -32,62 +34,62 @@ public final class ValueUtils
 
 	/**
 	 * Attempts to parse a byte from a string.
-	 * If the string is null or the empty string, this returns 0.
+	 * If the string is null or the empty string, this returns null.
 	 * @param s the input string.
 	 * @return the interpreted byte.
 	 */
-	public static byte parseByte(String s)
+	public static Byte parseByte(String s)
 	{
-		if (s == null)
+		if (isStringEmpty(s))
 			return 0;
 		try {
 			return Byte.parseByte(s);
 		} catch (NumberFormatException e) {
-			return 0;
+			return null;
 		}
 	}
 
 	/**
 	 * Attempts to parse a short from a string.
-	 * If the string is null or the empty string, this returns 0.
+	 * If the string is null or the empty string, this returns null.
 	 * @param s the input string.
 	 * @return the interpreted short.
 	 */
-	public static short parseShort(String s)
+	public static Short parseShort(String s)
 	{
-		if (s == null)
+		if (isStringEmpty(s))
 			return 0;
 		try {
 			return Short.parseShort(s);
 		} catch (NumberFormatException e) {
-			return 0;
+			return null;
 		}
 	}
 
 	/**
 	 * Attempts to parse a char from a string.
-	 * If the string is null or the empty string, this returns '\0'.
+	 * If the string is null or the empty string, this returns null.
 	 * @param s the input string.
 	 * @return the first character in the string.
 	 */
-	public static char parseChar(String s)
+	public static Character parseChar(String s)
 	{
 		if (isStringEmpty(s))
-			return '\0';
+			return null;
 		else
 			return s.charAt(0);
 	}
 
 	/**
 	 * Attempts to parse an int from a string.
-	 * If the string is null or the empty string, this returns 0.
+	 * If the string is null or the empty string, this returns null.
 	 * @param s the input string.
 	 * @return the interpreted integer.
 	 */
-	public static int parseInt(String s)
+	public static Integer parseInt(String s)
 	{
-		if (s == null)
-			return 0;
+		if (isStringEmpty(s))
+			return null;
 		try {
 			return Integer.parseInt(s);
 		} catch (NumberFormatException e) {
@@ -97,14 +99,14 @@ public final class ValueUtils
 
 	/**
 	 * Attempts to parse a long from a string.
-	 * If the string is null or the empty string, this returns 0.
+	 * If the string is null or the empty string, this returns null.
 	 * @param s the input string.
 	 * @return the interpreted long integer.
 	 */
-	public static long parseLong(String s)
+	public static Long parseLong(String s)
 	{
-		if (s == null)
-			return 0L;
+		if (isStringEmpty(s))
+			return null;
 		try {
 			return Long.parseLong(s);
 		} catch (NumberFormatException e) {
@@ -114,35 +116,35 @@ public final class ValueUtils
 
 	/**
 	 * Attempts to parse a float from a string.
-	 * If the string is null or the empty string, this returns 0.0f.
+	 * If the string is null or the empty string, this returns null.
 	 * @param s the input string.
 	 * @return the interpreted float.
 	 */
-	public static float parseFloat(String s)
+	public static Float parseFloat(String s)
 	{
-		if (s == null)
-			return 0f;
+		if (isStringEmpty(s))
+			return null;
 		try {
 			return Float.parseFloat(s);
 		} catch (NumberFormatException e) {
-			return 0f;
+			return null;
 		}
 	}
 
 	/**
 	 * Attempts to parse a double from a string.
-	 * If the string is null or the empty string, this returns 0.0.
+	 * If the string is null or the empty string, this returns null.
 	 * @param s the input string.
 	 * @return the interpreted double.
 	 */
-	public static double parseDouble(String s)
+	public static Double parseDouble(String s)
 	{
-		if (s == null)
-			return 0.0;
+		if (isStringEmpty(s))
+			return null;
 		try {
 			return Double.parseDouble(s);
 		} catch (NumberFormatException e) {
-			return 0.0;
+			return null;
 		}
 	}
 
@@ -156,12 +158,8 @@ public final class ValueUtils
 	 */
 	public static boolean parseBoolean(String s, boolean def)
 	{
-		if (isStringEmpty(s))
-			return def;
-		else if (!s.equalsIgnoreCase("true"))
-			return false;
-		else
-			return true;
+		Boolean value = parseBoolean(s);
+		return value == null ? def : value;
 	}
 
 	/**
@@ -173,13 +171,8 @@ public final class ValueUtils
 	 */
 	public static byte parseByte(String s, byte def)
 	{
-		if (isStringEmpty(s))
-			return def;
-		try {
-			return Byte.parseByte(s);
-		} catch (NumberFormatException e) {
-			return 0;
-		}
+		Byte value = parseByte(s);
+		return value == null ? def : value;
 	}
 
 	/**
@@ -191,13 +184,8 @@ public final class ValueUtils
 	 */
 	public static short parseShort(String s, short def)
 	{
-		if (isStringEmpty(s))
-			return def;
-		try {
-			return Short.parseShort(s);
-		} catch (NumberFormatException e) {
-			return 0;
-		}
+		Short value = parseShort(s);
+		return value == null ? def : value;
 	}
 
 	/**
@@ -209,10 +197,8 @@ public final class ValueUtils
 	 */
 	public static char parseChar(String s, char def)
 	{
-		if (isStringEmpty(s))
-			return def;
-		else
-			return s.charAt(0);
+		Character value = parseChar(s);
+		return value == null ? def : value;
 	}
 
 	/**
@@ -224,13 +210,8 @@ public final class ValueUtils
 	 */
 	public static int parseInt(String s, int def)
 	{
-		if (isStringEmpty(s))
-			return def;
-		try {
-			return Integer.parseInt(s);
-		} catch (NumberFormatException e) {
-			return 0;
-		}
+		Integer value = parseInt(s);
+		return value == null ? def : value;
 	}
 
 	/**
@@ -242,13 +223,8 @@ public final class ValueUtils
 	 */
 	public static long parseLong(String s, long def)
 	{
-		if (isStringEmpty(s))
-			return def;
-		try {
-			return Long.parseLong(s);
-		} catch (NumberFormatException e) {
-			return 0L;
-		}
+		Long value = parseLong(s);
+		return value == null ? def : value;
 	}
 
 	/**
@@ -260,13 +236,8 @@ public final class ValueUtils
 	 */
 	public static float parseFloat(String s, float def)
 	{
-		if (isStringEmpty(s))
-			return def;
-		try {
-			return Float.parseFloat(s);
-		} catch (NumberFormatException e) {
-			return 0f;
-		}
+		Float value = parseFloat(s);
+		return value == null ? def : value;
 	}
 
 	/**
@@ -278,13 +249,8 @@ public final class ValueUtils
 	 */
 	public static double parseDouble(String s, double def)
 	{
-		if (isStringEmpty(s))
-			return def;
-		try {
-			return Double.parseDouble(s);
-		} catch (NumberFormatException e) {
-			return 0.0;
-		}
+		Double value = parseDouble(s);
+		return value == null ? def : value;
 	}
 
 	/**

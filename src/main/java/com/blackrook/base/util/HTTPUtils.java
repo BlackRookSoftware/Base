@@ -184,9 +184,10 @@ public final class HTTPUtils
 		private Object waitMutex;
 	
 		// State
-		private Thread executor;
-		private boolean done;
-		private boolean running;
+		private volatile Thread executor;
+		private volatile boolean done;
+		private volatile boolean running;
+		
 		private Throwable exception;
 		private T finishedResult;
 	

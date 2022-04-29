@@ -24,7 +24,7 @@ public final class ArrayUtils
 	 */
 	public static boolean isArray(Class<?> clazz)
 	{
-		return clazz.getName().startsWith("["); 
+		return clazz.isArray(); 
 	}
 
 	/**
@@ -146,6 +146,22 @@ public final class ArrayUtils
 	}
 
 	/**
+	 * Returns a new (safe) array reference that contains all of the passed-in elements in order.
+	 * @param <T> the object type in the array.
+	 * @param items the items to re-encapsulate.
+	 * @return a new array.
+	 */
+	@SafeVarargs
+	public static <T> T[] arrayOf(T ... items)
+	{
+		Class<?> type = getArrayType(items);
+		@SuppressWarnings("unchecked")
+		T[] out = (T[])Array.newInstance(type, items.length);
+		System.arraycopy(items, 0, out, 0, items.length);
+		return out;
+	}
+
+	/**
 	 * Gets the element at an index in the array, but returns 
 	 * null if the index is outside of the array bounds.
 	 * @param <T> the array type.
@@ -174,7 +190,7 @@ public final class ArrayUtils
 		array[a] = array[b];
 		array[b] = temp;
 	}
-
+	
 	/**
 	 * Concatenates a set of arrays together, such that the contents of each
 	 * array are joined into one array. Null arrays are skipped.
@@ -183,8 +199,9 @@ public final class ArrayUtils
 	 * @return a new array with all objects in each provided array added 
 	 * to the resultant one in the order in which they appear.
 	 */
+	@SafeVarargs
 	@SuppressWarnings("unchecked")
-	public static <T> T[] joinArrays(T[]...  arrays)
+	public static <T> T[] joinArrays(T[] ...  arrays)
 	{
 		int totalLen = 0;
 		for (T[] a : arrays)

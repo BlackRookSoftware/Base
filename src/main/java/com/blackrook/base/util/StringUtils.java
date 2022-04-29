@@ -294,12 +294,31 @@ public final class StringUtils
 	 */
 	public static int printWrapped(PrintStream out, CharSequence message, int startColumn, int width)
 	{
+		return printWrapped(out, message, 0, 0, width);
+	}
+
+	/**
+	 * Prints a message out to a PrintStream, word-wrapped
+	 * to a set column width (in characters). The width cannot be
+	 * 1 or less or this does nothing. This will also turn any whitespace
+	 * character it encounters into a single space, regardless of specialty.
+	 * @param out the print stream to use. 
+	 * @param message the output message.
+	 * @param startColumn the starting column.
+	 * @param indent the indent line.
+	 * @param width the width in characters.
+	 * @return the ending column for subsequent calls.
+	 */
+	public static int printWrapped(PrintStream out, CharSequence message, int startColumn, int indent, int width)
+	{
 		if (width <= 1) return startColumn;
 		
 		StringBuilder token = new StringBuilder();
 		StringBuilder line = new StringBuilder();
 		int ln = startColumn;
 		int tok = 0;
+		for (int j = 0; j < indent; j++)
+			line.append(' ');
 		for (int i = 0; i < message.length(); i++)
 		{
 			char c = message.charAt(i);
@@ -312,6 +331,8 @@ public final class StringUtils
 				out.println(line.toString());
 				line.delete(0, line.length());
 				ln = 0;
+				for (int j = 0; j < indent; j++)
+					line.append(' ');
 			}
 			else if (Character.isWhitespace(c))
 			{
@@ -339,6 +360,8 @@ public final class StringUtils
 				out.println(line.toString());
 				line.delete(0, line.length());
 				ln = 0;
+				for (int j = 0; j < indent; j++)
+					line.append(' ');
 				token.append(c);
 				tok++;
 			}

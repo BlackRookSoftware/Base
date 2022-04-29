@@ -6,6 +6,7 @@
 package com.blackrook.base.util;
 
 import java.io.File;
+import java.io.FileFilter;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -15,6 +16,7 @@ import java.net.URL;
 import java.nio.channels.FileLock;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
@@ -126,19 +128,19 @@ public final class FileUtils
 	 * Creates a file filled with random data with the specified length.
 	 * If <code>file</code> refers to an existing file, it will be OVERWRITTEN.
 	 * @param file the file to write.
+	 * @param random the random number generator to use.
 	 * @param length the length of the file in bytes.
 	 * @throws IOException if an I/O error occurs.
 	 */
-	public static void createJunkFile(File file, int length) throws IOException
+	public static void createJunkFile(File file, Random random, int length) throws IOException
 	{
 		byte[] buffer = new byte[65536];
-		Random r = new Random();
 		int n = 0;
 		
 		FileOutputStream fos = new FileOutputStream(file);
 		while (n < length)
 		{
-			r.nextBytes(buffer);
+			random.nextBytes(buffer);
 			int len = Math.min(buffer.length, length - n);
 			fos.write(buffer, 0, len);
 			fos.flush();
@@ -628,6 +630,72 @@ public final class FileUtils
 		File[] out = new File[fileList.size()];
 		fileList.toArray(out);
 		return out;
+	}
+	
+	/**
+	 * Gets a list of subdirectories from a top directory.
+	 * @param startDirectory the starting directory.
+	 * @param includeTop if true, the output includes the starting directory.
+	 * @return an array of subdirectory paths under the top directory.
+	 */
+	public static File[] getSubdirectories(File startDirectory, boolean includeTop)
+	{
+		return getSubdirectories(startDirectory, includeTop, (unused) -> true);
+	}
+
+	/**
+	 * Gets a list of subdirectories from a top directory.
+	 * @param startDirectory the starting directory.
+	 * @param includeTop if true, the output includes the starting directory.
+	 * @param dirFilter additional directory filter.
+	 * @return an array of subdirectory paths under the top directory.
+	 */
+	public static File[] getSubdirectories(File startDirectory, boolean includeTop, FileFilter dirFilter)
+	{
+		if (!startDirectory.isDirectory())
+			return null;
+		
+		List<File> dirs = new LinkedList<>();
+		Deque<File> dirQueue = new LinkedList<>();
+		dirQueue.add(startDirectory);
+		
+		if (includeTop)
+			dirs.add(startDirectory);
+		
+		while (!dirQueue.isEmpty())
+		{
+			File dir = dirQueue.pollFirst();
+			File[] files = dir.listFiles((f) -> f.isDirectory());
+			for (int i = 0; i < files.length; i++)
+			{
+				if (dirFilter.accept(files[i]))
+				{
+					dirQueue.add(files[i]);
+					dirs.add(files[i]);
+				}
+			}
+		}
+		
+		return dirs.toArray(new File[dirs.size()]);
+	}
+
+	/**
+	 * Compares two file paths for equality.
+	 * If the OS is Windows, the paths are compared case-insensitively.
+	 * @param a the first file.
+	 * @param b the second file.
+	 * @return true if the two files have the same absolute path, false otherwise.
+	 */
+	public static boolean filePathEquals(File a, File b)
+	{
+		if (a == null)
+			return b == null;
+		else if (b == null)
+			return false;
+		else if (OSUtils.isWindows())
+			return a.getAbsolutePath().equalsIgnoreCase(b.getAbsolutePath());
+		else
+			return a.getAbsolutePath().equals(b.getAbsolutePath());
 	}
 	
 }

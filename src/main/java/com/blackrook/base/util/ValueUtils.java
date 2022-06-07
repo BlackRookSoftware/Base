@@ -5,6 +5,9 @@
  ******************************************************************************/
 package com.blackrook.base.util;
 
+import java.util.concurrent.Callable;
+import java.util.function.Function;
+
 /**
  * Simple utility functions around values.
  * @author Matthew Tropiano
@@ -15,6 +18,36 @@ public final class ValueUtils
 
 	private ValueUtils() {}
 	
+	/**
+	 * This function calls the provided callable and returns its value.
+	 * This is mostly for filling static fields on classes that would otherwise only need to be put in a static block. 
+	 * @param <T> the return type.
+	 * @param callable the callable to call.
+	 * @return the result of the callable.
+	 * @throws RuntimeException if an exception occurs.
+	 */
+	public static <T> T get(Callable<T> callable)
+	{
+		try {
+			return callable.call();
+		} catch (Throwable t) {
+			throw new RuntimeException("Uncaught exception: " + t.getClass().getSimpleName(), t);
+		}
+	}
+	
+	/**
+	 * Attempts to parse a string to another object.
+	 * If the string is empty or null, this returns null.
+	 * If the string does not equal "true" (case ignored), this returns false.
+	 * @param s the input string.
+	 * @param parseFunction the parsing function.
+	 * @return the interpreted object.
+	 */
+	public static <T> T parse(String s, Function<String, T> parseFunction)
+	{
+		return parseFunction.apply(s);
+	}
+
 	/**
 	 * Attempts to parse a boolean from a string.
 	 * If the string is empty or null, this returns null.

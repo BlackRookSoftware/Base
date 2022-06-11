@@ -18,6 +18,8 @@ import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 
 /**
@@ -28,6 +30,19 @@ public final class ObjectUtils
 {
 	private ObjectUtils() {}
 
+	/**
+	 * Apply function for objects.
+	 * @param input the input object to manipulate.
+	 * @param applier the function to pass the input element to.
+	 * @param <T> the return/input type.
+	 * @return the input object.
+	 */
+	public static <T> T apply(T input, Consumer<T> applier)
+	{
+		applier.accept(input);
+		return input;
+	}
+	
 	/**
 	 * Returns if two objects are equal, performing null checking. 
 	 * @param a the first object.
@@ -55,6 +70,18 @@ public final class ObjectUtils
 	public static <T> T isNull(T testObject, T nullReturn)
 	{
 		return testObject != null ? testObject : nullReturn;
+	}
+
+	/**
+	 * Returns the first object if it is not null, otherwise returns the second. 
+	 * @param <T> class that extends Object.
+	 * @param testObject the first ("tested") object.
+	 * @param nullReturn the Supplier to call to return if testObject is null.
+	 * @return testObject if not null, nullReturn otherwise.
+	 */
+	public static <T> T isNull(T testObject, Supplier<T> nullReturn)
+	{
+		return testObject != null ? testObject : nullReturn.get();
 	}
 
 	/**
@@ -264,5 +291,5 @@ public final class ObjectUtils
 			return old;
 		}
 	}
-	
+
 }

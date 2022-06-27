@@ -43,9 +43,20 @@ public final class FileUtils
 	 */
 	public static boolean touch(String filePath) throws IOException
 	{
-		File f = new File(filePath);
-		FileOutputStream fos = new FileOutputStream(f,true);
-		fos.close();
+		return touch(new File(filePath));
+	}
+
+	/**
+	 * Creates a blank file or updates its last modified date.
+	 * @param filePath	the abstract path to use.
+	 * @return true if the file was made/updated, false otherwise.
+	 * @throws IOException if creating/modifying the file violates something.
+	 */
+	public static boolean touch(File filePath) throws IOException
+	{
+		RandomAccessFile file = new RandomAccessFile(filePath, "rw");
+		file.setLength(file.length()); // should make a mock write without altering anything.
+		file.close();
 		return true;
 	}
 
@@ -266,6 +277,21 @@ public final class FileUtils
 		}
 	
 		return sb.toString();
+	}
+
+	/**
+	 * Returns the provided file path into a canonical File path.
+	 * If a call to {@link File#getCanonicalFile()} fails, it will call {@link File#getAbsoluteFile()} instead.
+	 * @param source the source file.
+	 * @return the resultant File with a full path.
+	 */
+	public static File canonizeFile(File source)
+	{
+		try {
+			return source.getCanonicalFile();
+		} catch (IOException e) {
+			return source.getAbsoluteFile();
+		}
 	}
 
 	/**

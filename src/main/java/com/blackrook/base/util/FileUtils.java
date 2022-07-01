@@ -165,7 +165,9 @@ public final class FileUtils
 	}
 
 	/**
-	 * Creates a temporary file for read part data.
+	 * Creates a temporary file for whatever purpose.
+	 * The returned object can be autoclosed via try-with-resources or some other method, which will
+	 * attempt to delete it from storage.
 	 * @return the file created.
 	 */
 	public static TempFile createTempFile()

@@ -748,7 +748,7 @@ public final class FileUtils
 	 * directories, by traversing directory paths.
 	 *
 	 * The returned list is not guaranteed to be in any order
-	 * related to the input list, and may contain files that are
+	 * related to the input list, and will contain files that are
 	 * in the input list if they are not directories.
 	 *
 	 * @param files	the list of files to expand.
@@ -769,7 +769,12 @@ public final class FileUtils
 			if (dequeuedFile.isDirectory())
 			{
 				for (File f : dequeuedFile.listFiles())
-					fileQueue.add(f);
+				{
+					if (f.isDirectory())
+						fileQueue.add(f);
+					else
+						fileList.add(f);
+				}
 			}
 			else
 			{
@@ -781,6 +786,126 @@ public final class FileUtils
 		fileList.toArray(out);
 		return out;
 	}
+	
+	/**
+	 * Expands a list of files into a larger list of files,
+	 * such that all of the files in the resultant list are not
+	 * directories, by traversing directory paths, but unlike
+	 * {@link #explodeFiles(File...)}, this does NOT RECURSE!
+	 *
+	 * The returned list is not guaranteed to be in any order
+	 * related to the input list, and will contain files that are
+	 * in the input list if they are not directories.
+	 *
+	 * @param files	the list of files to expand.
+	 * @return	a list of all files found in the subdirectory search.
+	 * @throws	NullPointerException if files is null.
+	 */
+	public static File[] expandFiles(File ... files)
+	{
+		Queue<File> fileQueue = new LinkedList<File>();
+		List<File> fileList = new ArrayList<File>();
+	
+		for (File f : files)
+			fileQueue.add(f);
+	
+		while (!fileQueue.isEmpty())
+		{
+			File dequeuedFile = fileQueue.poll();
+			if (!dequeuedFile.isDirectory())
+			{
+				for (File f : dequeuedFile.listFiles())
+					if (!f.isDirectory())
+						fileList.add(f);
+			}
+			else
+			{
+				fileList.add(dequeuedFile);
+			}
+		}
+	
+		File[] out = new File[fileList.size()];
+		fileList.toArray(out);
+		return out;
+	}
+
+	/**
+	 * Deletes all files under a directory.
+	 * If the provided file is not a directory, it is still deleted.
+	 * This does not search recursively for more files.
+	 * @param directory the directory.
+	 * @return the files deleted.
+	 */
+	public static File[] deleteDirectory(File directory)
+	{
+		return deleteDirectory(directory, false, (file) -> true);
+	}
+	
+	/**
+	 * Deletes all files under a directory.
+	 * If the provided file is not a directory, it is still deleted.
+	 * @param directory the directory.
+	 * @param recurse if true, recurse through directories and delete those.
+	 * @return the files deleted.
+	 */
+	public static File[] deleteDirectory(File directory, boolean recurse)
+	{
+		return deleteDirectory(directory, recurse, (file) -> true);
+	}
+	
+	/**
+	 * Deletes all files under a directory.
+	 * If the provided file is not a directory, it is still deleted.
+	 * @param directory the directory.
+	 * @param recurse if true, recurse through directories and delete those.
+	 * @param filter an optional file filter for what to delete.
+	 * @return the files deleted.
+	 */
+	public static File[] deleteDirectory(File directory, boolean recurse, FileFilter filter)
+	{
+		List<File> aggregator = new LinkedList<File>();
+		deleteDirectoryRecurse(aggregator, directory, recurse, filter);
+		return aggregator.toArray(new File[aggregator.size()]);
+	}
+	
+	/**
+	 * Deletes all files under a directory.
+	 * If the provided file is not a directory, it is still deleted.
+	 * @param aggregator the aggregate list for all deleted files.
+	 * @param directory the directory.
+	 * @param recurse if true, recurse through directories and delete those.
+	 * @param filter an optional file filter for what to delete.
+	 */
+	public static void deleteDirectoryRecurse(List<File> aggregator, File directory, boolean recurse, FileFilter filter)
+	{
+		File[] files = directory.listFiles(filter);
+		if (files == null)
+		{
+			if (directory.delete())
+				aggregator.add(directory);
+		}
+		
+		for (int i = 0; i < files.length; i++) 
+		{
+			File file = files[i];
+			if (file.isDirectory() && recurse)
+			{
+				deleteDirectoryRecurse(aggregator, file, recurse, filter);
+				if (file.listFiles().length == 0)
+					if (file.delete())
+						aggregator.add(file);
+			}
+			else
+			{
+				if (file.delete())
+					aggregator.add(file);
+			}
+		}
+		
+		if (directory.delete())
+			aggregator.add(directory);
+	}
+
 	
 	/**
 	 * Gets a list of subdirectories from a top directory.

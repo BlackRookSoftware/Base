@@ -5,6 +5,7 @@ import java.awt.Color;
 import java.awt.Composite;
 import java.awt.CompositeContext;
 import java.awt.Graphics2D;
+import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
@@ -140,7 +141,7 @@ public final class ImageUtils
 	 * @param source the source image.
 	 * @return a new image.
 	 */
-	public static BufferedImage flipH(BufferedImage source)
+	public static BufferedImage flipHorizontal(BufferedImage source)
 	{
 		BufferedImage out = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		Graphics2D g = out.createGraphics();
@@ -154,7 +155,7 @@ public final class ImageUtils
 	 * @param source the source image.
 	 * @return a new image.
 	 */
-	public static BufferedImage flipV(BufferedImage source)
+	public static BufferedImage flipVertical(BufferedImage source)
 	{
 		BufferedImage out = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		Graphics2D g = out.createGraphics();
@@ -185,9 +186,9 @@ public final class ImageUtils
 	 * @param y the target Y-coordinate (from top-left of image).
 	 * @return the source image.
 	 */
-	public static BufferedImage paint(BufferedImage source, BufferedImage incoming, int x, int y)
+	public static BufferedImage paint(BufferedImage source, Image incoming, int x, int y)
 	{
-		return paint(source, incoming, x, y, incoming.getWidth(), incoming.getHeight(), ResamplingType.NEAREST, CompositingType.ALPHA, 1.0f);
+		return paint(source, incoming, x, y, incoming.getWidth(null), incoming.getHeight(null), ResamplingType.NEAREST, CompositingType.ALPHA, 1.0f);
 	}
 	
 	/**
@@ -199,9 +200,9 @@ public final class ImageUtils
 	 * @param alpha the alpha scalar for the blend.
 	 * @return the source image.
 	 */
-	public static BufferedImage paint(BufferedImage source, BufferedImage incoming, int x, int y, float alpha)
+	public static BufferedImage paint(BufferedImage source, Image incoming, int x, int y, float alpha)
 	{
-		return paint(source, incoming, x, y, incoming.getWidth(), incoming.getHeight(), ResamplingType.NEAREST, CompositingType.ALPHA, alpha);
+		return paint(source, incoming, x, y, incoming.getWidth(null), incoming.getHeight(null), ResamplingType.NEAREST, CompositingType.ALPHA, alpha);
 	}
 	
 	/**
@@ -214,9 +215,9 @@ public final class ImageUtils
 	 * @param alpha the alpha scalar for the blend.
 	 * @return the source image.
 	 */
-	public static BufferedImage paint(BufferedImage source, BufferedImage incoming, int x, int y, CompositingType blend, float alpha)
+	public static BufferedImage paint(BufferedImage source, Image incoming, int x, int y, CompositingType blend, float alpha)
 	{
-		return paint(source, incoming, x, y, incoming.getWidth(), incoming.getHeight(), ResamplingType.NEAREST, blend, alpha);
+		return paint(source, incoming, x, y, incoming.getWidth(null), incoming.getHeight(null), ResamplingType.NEAREST, blend, alpha);
 	}
 	
 	/**
@@ -232,7 +233,7 @@ public final class ImageUtils
 	 * @param alpha the alpha scalar for the blend.
 	 * @return the source image.
 	 */
-	public static BufferedImage paint(BufferedImage source, BufferedImage incoming, int x, int y, int width, int height, ResamplingType resamplingType, CompositingType blend, float alpha)
+	public static BufferedImage paint(BufferedImage source, Image incoming, int x, int y, int width, int height, ResamplingType resamplingType, CompositingType blend, float alpha)
 	{
 		if (width < 1)
 			throw new IllegalArgumentException("width cannot be < 1");

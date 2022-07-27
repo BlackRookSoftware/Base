@@ -11,10 +11,12 @@ import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
 import java.awt.image.DataBuffer;
 import java.awt.image.Raster;
-import java.awt.image.RenderedImage;
 import java.awt.image.WritableRaster;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Consumer;
 
 /**
  * A bulk image manipulation utility class.
@@ -184,40 +186,12 @@ public final class ImageUtils
 	 * @param incoming the incoming image to paint.
 	 * @param x the target X-coordinate (from top-left of image).
 	 * @param y the target Y-coordinate (from top-left of image).
-	 * @return the source image.
+	 * @param composite the composite type for the paint.
+	 * @return the source image, altered.
 	 */
-	public static BufferedImage paint(BufferedImage source, Image incoming, int x, int y)
+	public static BufferedImage paint(BufferedImage source, Image incoming, int x, int y, Composite composite)
 	{
-		return paint(source, incoming, x, y, incoming.getWidth(null), incoming.getHeight(null), ResamplingType.NEAREST, CompositingType.ALPHA, 1.0f);
-	}
-	
-	/**
-	 * Paints an image into another image.
-	 * @param source the source image to paint into.
-	 * @param incoming the incoming image to paint.
-	 * @param x the target X-coordinate (from top-left of image).
-	 * @param y the target Y-coordinate (from top-left of image).
-	 * @param alpha the alpha scalar for the blend.
-	 * @return the source image.
-	 */
-	public static BufferedImage paint(BufferedImage source, Image incoming, int x, int y, float alpha)
-	{
-		return paint(source, incoming, x, y, incoming.getWidth(null), incoming.getHeight(null), ResamplingType.NEAREST, CompositingType.ALPHA, alpha);
-	}
-	
-	/**
-	 * Paints an image into another image.
-	 * @param source the source image to paint into.
-	 * @param incoming the incoming image to paint.
-	 * @param x the target X-coordinate (from top-left of image).
-	 * @param y the target Y-coordinate (from top-left of image).
-	 * @param blend the blending composite type for the paint.
-	 * @param alpha the alpha scalar for the blend.
-	 * @return the source image.
-	 */
-	public static BufferedImage paint(BufferedImage source, Image incoming, int x, int y, CompositingType blend, float alpha)
-	{
-		return paint(source, incoming, x, y, incoming.getWidth(null), incoming.getHeight(null), ResamplingType.NEAREST, blend, alpha);
+		return paint(source, incoming, x, y, incoming.getWidth(null), incoming.getHeight(null), ResamplingType.NEAREST, composite);
 	}
 	
 	/**
@@ -229,11 +203,10 @@ public final class ImageUtils
 	 * @param width the new width of the image to paint.
 	 * @param height the new height of the image to paint.
 	 * @param resamplingType the resampling type for the resize.
-	 * @param blend the blending composite type for the paint.
-	 * @param alpha the alpha scalar for the blend.
-	 * @return the source image.
+	 * @param composite the composite type for the paint.
+	 * @return the source image, altered.
 	 */
-	public static BufferedImage paint(BufferedImage source, Image incoming, int x, int y, int width, int height, ResamplingType resamplingType, CompositingType blend, float alpha)
+	public static BufferedImage paint(BufferedImage source, Image incoming, int x, int y, int width, int height, ResamplingType resamplingType, Composite composite)
 	{
 		if (width < 1)
 			throw new IllegalArgumentException("width cannot be < 1");
@@ -241,7 +214,8 @@ public final class ImageUtils
 			throw new IllegalArgumentException("height cannot be < 1");
 
 		Graphics2D g = source.createGraphics();
-		Composite oldComposite = blend.setComposite(g, alpha);
+		Composite oldComposite = g.getComposite();
+		
 		resamplingType.setHints(g);
 		g.drawImage(incoming, x, y, width, height, null);
 		g.setComposite(oldComposite);
@@ -249,38 +223,218 @@ public final class ImageUtils
 		return source;
 	}
 	
+	/**
+	 * Paints an image tiled across the top of the image until it reaches or crosses the full width.
+	 * @param source the source image to paint into.
+	 * @param incoming the incoming image to paint.
+	 * @param composite the composite type for the paint.
+	 * @return the source image.
+	 */
+	public static BufferedImage paintTopTrim(BufferedImage source, Image incoming, Composite composite)
+	{
+		int width = source.getWidth();
+		int incomingWidth = incoming.getWidth(null);
+		int x = 0;
+		while (x < width)
+		{
+			paint(source, incoming, x, 0, composite);
+			x += incomingWidth;
+		}
+		return source;
+	}
+	
+	/**
+	 * Paints an image tiled across the bottom of the image until it reaches or crosses the full width.
+	 * @param source the source image to paint into.
+	 * @param incoming the incoming image to paint.
+	 * @param composite the composite type for the paint.
+	 * @return the source image.
+	 */
+	public static BufferedImage paintBottomTrim(BufferedImage source, Image incoming, Composite composite)
+	{
+		int width = source.getWidth();
+		int incomingWidth = incoming.getWidth(null);
+		int x = 0;
+		int y = source.getHeight() - incoming.getHeight(null);
+		while (x < width)
+		{
+			paint(source, incoming, x, y, composite);
+			x += incomingWidth;
+		}
+		return source;
+	}
+	
+	/**
+	 * Paints an image tiled on the left side from top of the image to the bottom until it reaches or crosses the full height.
+	 * @param source the source image to paint into.
+	 * @param incoming the incoming image to paint.
+	 * @param composite the composite type for the paint.
+	 * @return the source image.
+	 */
+	public static BufferedImage paintLeftTrim(BufferedImage source, Image incoming, Composite composite)
+	{
+		int height = source.getHeight();
+		int incomingHeight = incoming.getHeight(null);
+		int y = 0;
+		while (y < height)
+		{
+			paint(source, incoming, 0, y, composite);
+			y += incomingHeight;
+		}
+		return source;
+	}
+	
+	/**
+	 * Paints an image tiled on the left side from top of the image to the bottom until it reaches or crosses the full height.
+	 * @param source the source image to paint into.
+	 * @param incoming the incoming image to paint.
+	 * @param composite the composite type for the paint.
+	 * @return the source image.
+	 */
+	public static BufferedImage paintRightTrim(BufferedImage source, Image incoming, Composite composite)
+	{
+		int height = source.getHeight();
+		int incomingHeight = incoming.getHeight(null);
+		int x = source.getWidth() - incoming.getWidth(null);
+		int y = 0;
+		while (y < height)
+		{
+			paint(source, incoming, x, y, composite);
+			y += incomingHeight;
+		}
+		return source;
+	}
+	
+	/**
+	 * Paints an image tiled across and down an image until the edges are reached.
+	 * @param source the source image to paint into.
+	 * @param incoming the incoming image to paint.
+	 * @param composite the composite type for the paint.
+	 * @return the source image.
+	 */
+	public static BufferedImage paintTiled(BufferedImage source, Image incoming, Composite composite)
+	{
+		int width = source.getWidth();
+		int height = source.getHeight();
+		int incomingWidth = incoming.getHeight(null);
+		int incomingHeight = incoming.getHeight(null);
+		int x = 0;
+		int y = 0;
+		while (x < width)
+		{
+			while (y < height)
+			{
+				paint(source, incoming, x, y, composite);
+				y += incomingHeight;
+			}
+			x += incomingWidth;
+		}
+		return source;
+	}
+	
 	// =======================================================================
 
 	/**
-	 * A function that takes two images and combines them, returning the resultant image.
+	 * A class that encapsulates a list of images and facilitates operations on them in bulk.
 	 */
-	@FunctionalInterface
-	public interface ImageFunction
+	public static class ImageList
 	{
+		private List<BufferedImage> images;
+
+		private ImageList()
+		{
+			this(8);
+		}
+		
+		private ImageList(int capacity)
+		{
+			this.images = new ArrayList<BufferedImage>(capacity);
+		}
+		
 		/**
-		 * Performs an action on an image returns the result as a new image.
-		 * @param source the source image.
-		 * @return a new image.
+		 * Wraps images in an image list.
+		 * @param images the images.
+		 * @return a new list.
 		 */
-		BufferedImage performAction(BufferedImage source);
+		public static ImageList wrap(BufferedImage ... images)
+		{
+			ImageList out = new ImageList(Math.max(images.length, 1));
+			for (int i = 0; i < images.length; i++)
+				out.add(images[i]);
+			return out;
+		}
+		
+		/**
+		 * Adds an image to the list.
+		 * @param image the image to add.
+		 * @return this list.
+		 */
+		public ImageList add(BufferedImage image)
+		{
+			images.add(image);
+			return this;
+		}
+
+		/**
+		 * Creates a list from a single image.
+		 * @param index the index.
+		 * @return a new list.
+		 */
+		public ImageList get(int index)
+		{
+			return wrap(images.get(index));
+		}
+
+		/**
+		 * Creates a list from a sublist of images.
+		 * @param start the starting index, inclusive.
+		 * @param end the ending index, exclusive.
+		 * @return a new list.
+		 */
+		public ImageList sublist(int start, int end)
+		{
+			int amount = end - start;
+			ImageList out = new ImageList(Math.max(amount, 1));
+			for (int i = 0; i < amount; i++)
+				out.add(images.get(i + start));
+			return out;
+		}
+		
+		/**
+		 * Performs an action on a copy of each image in the list, and returns a new list.
+		 * All images in the new list are potentially altered. 
+		 * Changes to the image passed to the consumer affect the image in the list.
+		 * @param imageFunction the function that performs the action. The parameter is an image in the list.
+		 * @return this list.
+		 */
+		public ImageList process(Consumer<BufferedImage> imageFunction)
+		{
+			ImageList out = new ImageList(images.size());
+			for (int i = 0; i < images.size(); i++)
+			{
+				BufferedImage copy = copy(images.get(i));
+				imageFunction.accept(copy);
+				out.add(copy);
+			}
+			return this;
+		}
+
+		/**
+		 * Performs an action on each image in the list, and returns this list.
+		 * All images in the list are potentially altered.
+		 * @param imageFunction the function that performs the action. The parameter is an image in the list.
+		 * @return this list.
+		 */
+		public ImageList inlineProcess(Consumer<BufferedImage> imageFunction)
+		{
+			images.forEach(imageFunction);
+			return this;
+		}
+		
 	}
 	
-	/**
-	 * A function that takes two images and combines them, returning the resultant image.
-	 */
-	@FunctionalInterface
-	public interface ImageCombinerFunction
-	{
-		/**
-		 * Performs an action on an image with another image and returns the result as a new image.
-		 * @param source the source image.
-		 * @param incoming the incoming image.
-		 * @return a new image.
-		 */
-		BufferedImage performAction(BufferedImage source, RenderedImage incoming);
-	}
-	
-	
+	// =======================================================================
+
 	/**
 	 * Resampling types.
 	 */
@@ -358,79 +512,65 @@ public final class ImageUtils
 		REPLACE
 		{
 			@Override
-			public Composite setComposite(Graphics2D g, float scalar)
+			public Composite create(float scalar)
 			{
-				Composite old = g.getComposite();
-				g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC));
-				return old;
+				return AlphaComposite.getInstance(AlphaComposite.SRC);
 			}
 		},
 		
 		ALPHA
 		{
 			@Override
-			public Composite setComposite(Graphics2D g, float scalar)
+			public Composite create(float scalar)
 			{
-				Composite old = g.getComposite();
-				g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, scalar));
-				return old;
+				return AlphaComposite.getInstance(AlphaComposite.SRC_OVER, scalar);
 			}
 		},
 		
 		ADD
 		{
 			@Override
-			public Composite setComposite(Graphics2D g, float scalar)
+			public Composite create(float scalar)
 			{
-				Composite old = g.getComposite();
-				g.setComposite(AdditiveComposite.getInstance(scalar));
-				return old;
+				return AdditiveComposite.getInstance(scalar);
 			}
 		},
 		
 		SUBTRACT
 		{
 			@Override
-			public Composite setComposite(Graphics2D g, float scalar)
+			public Composite create(float scalar)
 			{
-				Composite old = g.getComposite();
-				g.setComposite(SubtractiveComposite.getInstance(scalar));
-				return old;
+				return SubtractiveComposite.getInstance(scalar);
 			}
 		},
 		
 		MULTIPLY
 		{
 			@Override
-			public Composite setComposite(Graphics2D g, float scalar)
+			public Composite create(float scalar)
 			{
-				Composite old = g.getComposite();
-				g.setComposite(MultiplicativeComposite.getInstance(scalar));
-				return old;
+				return MultiplicativeComposite.getInstance(scalar);
 			}
 		},
 		
-		/** @since 1.10.2.1 */
 		DESATURATE
 		{
 			@Override
-			public Composite setComposite(Graphics2D g, float scalar)
+			public Composite create(float scalar)
 			{
-				Composite old = g.getComposite();
-				g.setComposite(DesaturationComposite.getInstance(scalar));
-				return old;
+				return DesaturationComposite.getInstance(scalar);
 			}
 		},
 		
 		;
 		
 		/**
-		 * Push the composite for this type.
-		 * @param g the graphics context.
+		 * Creates the composite for this type.
 		 * @param scalar the applicative scalar value.
 		 * @return the old composite.
 		 */
-		public abstract Composite setComposite(Graphics2D g, float scalar);
+		public abstract Composite create(float scalar);
 	
 		public static final Map<String, CompositingType> VALUES = new TreeMap<String, CompositingType>(String.CASE_INSENSITIVE_ORDER)
 		{
@@ -711,7 +851,7 @@ public final class ImageUtils
 	/**
 	 * The composite context for {@link AdditiveComposite}s. 
 	 */
-	public static class AdditiveCompositeContext extends ARGBCompositeContext
+	private static class AdditiveCompositeContext extends ARGBCompositeContext
 	{
 		private AdditiveCompositeContext(ColorModel srcColorModel, ColorModel dstColorModel, float preAlpha)
 		{
@@ -749,7 +889,7 @@ public final class ImageUtils
 	/**
 	 * The composite context for {@link SubtractiveComposite}s. 
 	 */
-	public static class SubtractiveCompositeContext extends ARGBCompositeContext
+	private static class SubtractiveCompositeContext extends ARGBCompositeContext
 	{
 		private SubtractiveCompositeContext(ColorModel srcColorModel, ColorModel dstColorModel, float preAlpha)
 		{
@@ -787,7 +927,7 @@ public final class ImageUtils
 	/**
 	 * The composite context for {@link MultiplicativeComposite}s. 
 	 */
-	public static class MultiplicativeCompositeContext extends ARGBCompositeContext
+	private static class MultiplicativeCompositeContext extends ARGBCompositeContext
 	{
 		protected MultiplicativeCompositeContext(ColorModel srcColorModel, ColorModel dstColorModel, float preAlpha)
 		{
@@ -826,7 +966,7 @@ public final class ImageUtils
 	 * The composite context for {@link DesaturationComposite}s.
 	 * @since 1.10.2.1
 	 */
-	public static class DesaturationCompositeContext extends ARGBCompositeContext
+	private static class DesaturationCompositeContext extends ARGBCompositeContext
 	{
 		protected DesaturationCompositeContext(ColorModel srcColorModel, ColorModel dstColorModel, float preAlpha)
 		{

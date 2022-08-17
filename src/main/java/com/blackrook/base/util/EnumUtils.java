@@ -1,10 +1,9 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Black Rook Software
+ * Copyright (c) 2021-2022 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
 package com.blackrook.base.util;
-
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -41,16 +40,65 @@ public final class EnumUtils
 	}
 
 	/**
+	 * Adds all values in an enum to an existing ordinal map. 
+	 * @param <K> the key type.
+	 * @param <E> an Enum type.
+	 * @param map the target map.
+	 * @param enumClass the Enum class. 
+	 * @param keyProviderFunc the function that fetches the corresponding id to use for the provided enum value. First parameter is the ordinal from {@link Enum#ordinal()}.
+	 */
+	public static <K, E extends Enum<E>> void addToMap(Map<K, ? super E> map, Class<E> enumClass, BiFunction<Integer, E, K> keyProviderFunc)
+	{
+		fillEnumMap(invokeValues(enumClass), map, keyProviderFunc);
+	}
+	
+	/**
+	 * Adds all values in an enum to an existing ordinal map. 
+	 * @param <E> an Enum type.
+	 * @param map the target map.
+	 * @param enumClass the Enum class. 
+	 */
+	public static <E extends Enum<E>> void addToOrdinalMap(Map<Integer, ? super E> map, Class<E> enumClass)
+	{
+		addToOrdinalMap(map, enumClass, 0);
+	}
+	
+	/**
+	 * Adds all values in an enum to an existing ordinal map. 
+	 * @param <E> an Enum type.
+	 * @param map the target map.
+	 * @param enumClass the Enum class. 
+	 * @param offset the offset to add to each ordinal.
+	 */
+	public static <E extends Enum<E>> void addToOrdinalMap(Map<Integer, ? super E> map, Class<E> enumClass, final int offset)
+	{
+		fillEnumMap(invokeValues(enumClass), map, (ordinal, e) -> ordinal + offset);
+	}
+	
+	/**
+	 * Adds all values in an enum to an existing name map. 
+	 * @param <E> an Enum type.
+	 * @param map the target map.
+	 * @param enumClass the Enum class. 
+	 */
+	public static <E extends Enum<E>> void addToNameMap(Map<String, ? super E> map, Class<E> enumClass)
+	{
+		fillEnumMap(invokeValues(enumClass), map, (ordinal, e) -> e.name());
+	}
+	
+	/**
 	 * Turns a set of enums into a map of some kind of key to enum.
 	 * @param <C> the key type; must be {@link Comparable}.
 	 * @param <E> an Enum type.
 	 * @param enumClass the Enum class. 
 	 * @param keyProviderFunc the function that fetches the corresponding id to use for the provided enum value. First parameter is the ordinal from {@link Enum#ordinal()}.
-	 * @return a new map.
+	 * @return the resultant, unmodifiable map.
 	 */
 	public static <C extends Comparable<C>, E extends Enum<E>> SortedMap<C, E> createMap(Class<E> enumClass, BiFunction<Integer, E, C> keyProviderFunc)
 	{
-		return Collections.unmodifiableSortedMap(fillEnumMap(invokeValues(enumClass), new TreeMap<>(), keyProviderFunc));
+		SortedMap<C, E> out = new TreeMap<>();
+		addToMap(out, enumClass, keyProviderFunc);
+		return Collections.unmodifiableSortedMap(out);
 	}
 
 	/**
@@ -58,7 +106,7 @@ public final class EnumUtils
 	 * @param <E> an Enum type.
 	 * @param enumClass the Enum class. 
 	 * @param idProviderFunc the function that fetches the corresponding id to use for the provided enum value. First parameter is the ordinal from {@link Enum#ordinal()}.
-	 * @return a new map.
+	 * @return the resultant, unmodifiable map.
 	 */
 	public static <E extends Enum<E>> SortedMap<Integer, E> createIntegerMap(Class<E> enumClass, BiFunction<Integer, E, Integer> idProviderFunc)
 	{
@@ -69,7 +117,7 @@ public final class EnumUtils
 	 * Turns a set of enums into a map of ordinal to enum value.
 	 * @param <E> an Enum type.
 	 * @param enumClass the Enum class. 
-	 * @return a new map.
+	 * @return the resultant, unmodifiable map.
 	 */
 	public static <E extends Enum<E>> SortedMap<Integer, E> createOrdinalMap(Class<E> enumClass)
 	{
@@ -82,7 +130,7 @@ public final class EnumUtils
 	 * @param <E> an Enum type.
 	 * @param enumClass the Enum class. 
 	 * @param offset the offset to add to each ordinal.
-	 * @return a new map.
+	 * @return the resultant, unmodifiable map.
 	 */
 	public static <E extends Enum<E>> SortedMap<Integer, E> createOrdinalMap(Class<E> enumClass, final int offset)
 	{
@@ -94,7 +142,7 @@ public final class EnumUtils
 	 * The Strings used are the enum's {@link Enum#name()}.
 	 * @param <E> an Enum type.
 	 * @param enumClass the Enum class.
-	 * @return a new map.
+	 * @return the resultant, unmodifiable map.
 	 */
 	public static <E extends Enum<E>> SortedMap<String, E> createNameMap(Class<E> enumClass)
 	{
@@ -106,7 +154,7 @@ public final class EnumUtils
 	 * The Strings used are the enum's {@link Enum#name()}.
 	 * @param <E> an Enum type.
 	 * @param enumClass the Enum class.
-	 * @return a new map.
+	 * @return the resultant, unmodifiable map.
 	 */
 	public static <E extends Enum<E>> SortedMap<String, E> createCaseInsensitiveNameMap(Class<E> enumClass)
 	{
@@ -118,11 +166,13 @@ public final class EnumUtils
 	 * @param <E> an Enum type.
 	 * @param enumClass the Enum class.
 	 * @param nameProviderFunc the function that fetches the corresponding string to use for the provided enum value. First parameter is the ordinal from {@link Enum#ordinal()}.
-	 * @return a new map.
+	 * @return the resultant, unmodifiable map.
 	 */
 	public static <E extends Enum<E>> SortedMap<String, E> createCaseInsensitiveEnumMap(Class<E> enumClass, BiFunction<Integer, E, String> nameProviderFunc)
 	{
-		return Collections.unmodifiableSortedMap(fillEnumMap(invokeValues(enumClass), new TreeMap<>(String.CASE_INSENSITIVE_ORDER), nameProviderFunc));
+		SortedMap<String, E> out = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+		addToMap(out, enumClass, nameProviderFunc);
+		return Collections.unmodifiableSortedMap(out);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -147,7 +197,7 @@ public final class EnumUtils
 	}
 	
 	// Fills a map and returns the map reference.
-	private static <E extends Enum<E>, K, M extends Map<K, E>> M fillEnumMap(E[] values, M targetMap, BiFunction<Integer, E, K> keyProvider)
+	private static <E extends Enum<E>, K, M extends Map<K, ? super E>> M fillEnumMap(E[] values, M targetMap, BiFunction<Integer, E, K> keyProvider)
 	{
 		for (int i = 0; i < values.length; i++)
 			targetMap.put(keyProvider.apply(i, values[i]), values[i]);

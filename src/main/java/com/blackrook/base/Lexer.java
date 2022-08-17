@@ -2268,6 +2268,15 @@ public class Lexer
 		}
 
 		/**
+		 * @return the current token's lexeme, or null if no current token.
+		 * @see Lexer.Token#getLexeme()
+		 */
+		protected String currentLexeme()
+		{
+			return currentToken != null ? currentToken.getLexeme() : null;
+		}
+
+		/**
 		 * Matches the current token. If matched, this returns true and advances
 		 * to the next token. Else, this returns false.
 		 * @param tokenType the type to match.

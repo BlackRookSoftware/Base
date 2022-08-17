@@ -15,6 +15,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.charset.Charset;
 
 /**
  * Simple IO utility functions.
@@ -66,7 +69,7 @@ public final class IOUtils
 	
 	/**
 	 * Convenience method for
-	 * <code>new BufferedReader(new InputStreamReader(in))</code>
+	 * <code>new BufferedReader(new InputStreamReader(in, Charset.defaultCharset()))</code>
 	 * @param in the stream to read.
 	 * @return an open buffered reader for the provided stream.
 	 * @throws IOException if an error occurred opening the stream for reading.
@@ -74,12 +77,26 @@ public final class IOUtils
 	 */
 	public static BufferedReader openTextStream(InputStream in) throws IOException
 	{
-		return new BufferedReader(new InputStreamReader(in));
+		return new BufferedReader(new InputStreamReader(in, Charset.defaultCharset()));
 	}
 
 	/**
 	 * Convenience method for
-	 * <code>new BufferedReader(new InputStreamReader(new FileInputStream(file)))</code>
+	 * <code>new BufferedReader(new InputStreamReader(in, encoding))</code>
+	 * @param in the stream to read.
+	 * @param encoding the text encoding to use.
+	 * @return an open buffered reader for the provided stream.
+	 * @throws IOException if an error occurred opening the stream for reading.
+	 * @throws SecurityException if you do not have permission for opening the stream.
+	 */
+	public static BufferedReader openTextStream(InputStream in, Charset encoding) throws IOException
+	{
+		return new BufferedReader(new InputStreamReader(in, encoding));
+	}
+
+	/**
+	 * Convenience method for
+	 * <code>new BufferedReader(new InputStreamReader(new FileInputStream(file), Charset.defaultCharset()))</code>
 	 * @param file the file to open.
 	 * @return an open buffered reader for the provided file.
 	 * @throws IOException if an error occurred opening the file for reading.
@@ -87,12 +104,26 @@ public final class IOUtils
 	 */
 	public static BufferedReader openTextFile(File file) throws IOException
 	{
-		return openTextStream(new FileInputStream(file));
+		return openTextStream(new FileInputStream(file), Charset.defaultCharset());
 	}
 
 	/**
 	 * Convenience method for
-	 * <code>new BufferedReader(new InputStreamReader(new FileInputStream(new File(filePath))))</code>
+	 * <code>new BufferedReader(new InputStreamReader(new FileInputStream(file), encoding))</code>
+	 * @param file the file to open.
+	 * @param encoding the text encoding to use.
+	 * @return an open buffered reader for the provided file.
+	 * @throws IOException if an error occurred opening the file for reading.
+	 * @throws SecurityException if you do not have permission for opening the file.
+	 */
+	public static BufferedReader openTextFile(File file, Charset encoding) throws IOException
+	{
+		return openTextStream(new FileInputStream(file), encoding);
+	}
+
+	/**
+	 * Convenience method for
+	 * <code>new BufferedReader(new InputStreamReader(new FileInputStream(new File(filePath)), Charset.defaultCharset()))</code>
 	 * @param filePath the path of the file to open.
 	 * @return an open buffered reader for the provided path.
 	 * @throws IOException if an error occurred opening the file for reading.
@@ -100,7 +131,21 @@ public final class IOUtils
 	 */
 	public static BufferedReader openTextFile(String filePath) throws IOException
 	{
-		return openTextFile(new File(filePath));
+		return openTextFile(new File(filePath), Charset.defaultCharset());
+	}
+
+	/**
+	 * Convenience method for
+	 * <code>new BufferedReader(new InputStreamReader(new FileInputStream(new File(filePath)), encoding))</code>
+	 * @param filePath the path of the file to open.
+	 * @param encoding the text encoding to use.
+	 * @return an open buffered reader for the provided path.
+	 * @throws IOException if an error occurred opening the file for reading.
+	 * @throws SecurityException if you do not have permission for opening the file.
+	 */
+	public static BufferedReader openTextFile(String filePath, Charset encoding) throws IOException
+	{
+		return openTextFile(new File(filePath), encoding);
 	}
 
 	/**
@@ -318,9 +363,80 @@ public final class IOUtils
 			if (maxLength >= 0)
 				maxLength -= buf;
 		}
+		out.flush();
 		return total;
 	}
 
+	/**
+	 * Reads from an input stream, reading in a consistent set of data
+	 * and writing it to the output stream. The read/write is buffered
+	 * so that it does not bog down the OS's other I/O requests.
+	 * This method finishes when the end of the source stream is reached.
+	 * Note that this may block if the input stream is a type of stream
+	 * that will block if the input stream blocks for additional input.
+	 * This method is thread-safe.
+	 * @param reader the reader to grab characters from.
+	 * @param writer the writer to write the characters to.
+	 * @return the total amount of characters relayed.
+	 * @throws IOException if a read or write error occurs.
+	 */
+	public static int relay(Reader reader, Writer writer) throws IOException
+	{
+		return relay(reader, writer, RELAY_BUFFER_SIZE, -1);
+	}	
+	
+	/**
+	 * Reads from an input stream, reading in a consistent set of data
+	 * and writing it to the output stream. The read/write is buffered
+	 * so that it does not bog down the OS's other I/O requests.
+	 * This method finishes when the end of the source stream is reached.
+	 * Note that this may block if the input stream is a type of stream
+	 * that will block if the input stream blocks for additional input.
+	 * This method is thread-safe.
+	 * @param reader the reader to grab characters from.
+	 * @param writer the writer to write the characters to.
+	 * @param bufferSize the buffer size in characters for the I/O. Must be &gt; 0.
+	 * @return the total amount of characters relayed.
+	 * @throws IOException if a read or write error occurs.
+	 */
+	public static int relay(Reader reader, Writer writer, int bufferSize) throws IOException
+	{
+		return relay(reader, writer, bufferSize, -1);
+	}	
+	
+	/**
+	 * Reads from an input stream, reading in a consistent set of data
+	 * and writing it to the output stream. The read/write is buffered
+	 * so that it does not bog down the OS's other I/O requests.
+	 * This method finishes when the end of the source stream is reached.
+	 * Note that this may block if the input stream is a type of stream
+	 * that will block if the input stream blocks for additional input.
+	 * This method is thread-safe.
+	 * @param reader the reader to grab characters from.
+	 * @param writer the writer to write the characters to.
+	 * @param bufferSize the buffer size in characters for the I/O. Must be &gt; 0.
+	 * @param maxLength the maximum amount of characters to relay, or a value &lt; 0 for no max.
+	 * @return the total amount of characters relayed.
+	 * @throws IOException if a read or write error occurs.
+	 */
+	public static int relay(Reader reader, Writer writer, int bufferSize, int maxLength) throws IOException
+	{
+		int total = 0;
+		int buf = 0;
+			
+		char[] RELAY_BUFFER = new char[bufferSize];
+		
+		while ((buf = reader.read(RELAY_BUFFER, 0, Math.min(maxLength < 0 ? Integer.MAX_VALUE : maxLength, bufferSize))) > 0)
+		{
+			writer.write(RELAY_BUFFER, 0, buf);
+			total += buf;
+			if (maxLength >= 0)
+				maxLength -= buf;
+		}
+		writer.flush();
+		return total;
+	}	
+	
 	/**
 	 * Sets the size of the buffer in bytes for {@link #relay(InputStream, OutputStream)}.
 	 * Although you may not encounter this problem, it would be unwise to set this during a call to relay().

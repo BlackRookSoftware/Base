@@ -30,7 +30,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * A single process Runnawrapper because Processes are the worst to deal with.
+ * A single process wrapper because Processes are the worst to deal with.
  * This Process builder is abstracted as a {@link Callable}, so it and other instances
  * can be added to an executor.
  * <p> If the same output reference is provided for more than one stream (STDOUT and STDERR),
@@ -286,6 +286,19 @@ public class ProcessCallable implements Callable<Integer>
 	public ProcessCallable arg(String arg)
 	{
 		command.add(arg);
+		return this;
+	}
+	
+	/**
+	 * Adds a series of command line arguments.
+	 * Command line arguments are sent in the order added.
+	 * @param args the command arguments to add.
+	 * @return this, for chaining.
+	 */
+	public ProcessCallable args(String ... args)
+	{
+		for (int i = 0; i < args.length; i++)
+			arg(args[i]);
 		return this;
 	}
 	
@@ -631,7 +644,8 @@ public class ProcessCallable implements Callable<Integer>
 	 */
 	public ProcessCallable setIn(final File sourceFile)
 	{
-		stdInRedirector = (process) -> new InputToOutputStreamThread(new FileInputStream(sourceFile), process.getOutputStream()) 
+		final File src = sourceFile == null ? NULL_FILE : sourceFile;
+		stdInRedirector = (process) -> new InputToOutputStreamThread(new FileInputStream(src), process.getOutputStream()) 
 		{
 			@Override
 			public void afterClose() throws IOException
@@ -780,6 +794,14 @@ public class ProcessCallable implements Callable<Integer>
 	{
 		String[] cmd = command.toArray(new String[command.size()]);
 		String[] env = envMap.isEmpty() ? null : new String[envMap.size() * 2];
+		
+		// fix empty args.
+		for (int i = 0; i < cmd.length; i++)
+		{
+			if (cmd[i].length() == 0)
+				cmd[i] = "\"\"";
+		}
+		
 		if (env != null)
 		{
 			int i = 0;

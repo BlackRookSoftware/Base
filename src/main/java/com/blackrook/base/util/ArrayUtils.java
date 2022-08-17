@@ -9,6 +9,7 @@ import java.lang.reflect.Array;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Simple utility functions around Arrays.
@@ -174,6 +175,40 @@ public final class ArrayUtils
 	{
 		if (index < 0 || index >= array.length)
 			return null;
+		else
+			return array[index];
+	}
+
+	/**
+	 * Gets the element at an index in the array, but returns 
+	 * a default value if the index is outside of the array bounds.
+	 * @param <T> the array type.
+	 * @param array the array to use.
+	 * @param index the index to use.
+	 * @param defaultValue the default value.
+	 * @return <code>array[index]</code> or the default value if out of bounds.
+	 */
+	public static <T> T arrayElement(T[] array, int index, T defaultValue)
+	{
+		if (index < 0 || index >= array.length)
+			return defaultValue;
+		else
+			return array[index];
+	}
+
+	/**
+	 * Gets the element at an index in the array, but returns 
+	 * a default value if the index is outside of the array bounds.
+	 * @param <T> the array type.
+	 * @param array the array to use.
+	 * @param index the index to use.
+	 * @param defaultValue the default value supplier.
+	 * @return <code>array[index]</code> or the default value if out of bounds.
+	 */
+	public static <T> T arrayElement(T[] array, int index, Supplier<T> defaultValue)
+	{
+		if (index < 0 || index >= array.length)
+			return defaultValue.get();
 		else
 			return array[index];
 	}

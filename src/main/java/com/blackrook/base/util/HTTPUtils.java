@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Black Rook Software
+ * Copyright (c) 2020-2023 Matt Tropiano
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -184,10 +184,9 @@ public final class HTTPUtils
 		private Object waitMutex;
 	
 		// State
-		private volatile Thread executor;
-		private volatile boolean done;
-		private volatile boolean running;
-		
+		private Thread executor;
+		private boolean done;
+		private boolean running;
 		private Throwable exception;
 		private T finishedResult;
 	
@@ -3745,7 +3744,7 @@ public final class HTTPUtils
 	{
 		long total = 0;
 		int buf = 0;
-			
+		long origMax = maxLength;
 		final byte[] RELAY_BUFFER = new byte[bufferSize];
 		
 		while (!cancelSwitch.get() && (buf = in.read(RELAY_BUFFER, 0, Math.min(maxLength == null ? Integer.MAX_VALUE : (int)Math.min(maxLength, Integer.MAX_VALUE), bufferSize))) > 0)
@@ -3753,7 +3752,7 @@ public final class HTTPUtils
 			out.write(RELAY_BUFFER, 0, buf);
 			total += buf;
 			if (monitor != null)
-				monitor.onProgressChange(total, maxLength);
+				monitor.onProgressChange(total, origMax);
 			if (maxLength != null && maxLength >= 0)
 				maxLength -= buf;
 		}

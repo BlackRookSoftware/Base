@@ -1,9 +1,10 @@
+package com.blackrook.base.util;
 /*******************************************************************************
  * Copyright (c) 2020-2023 Matt Tropiano
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
-package com.blackrook.base.util;
+
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -1858,7 +1859,7 @@ public final class HTTPUtils
 	{
 		private FormContent(HTTPParameters parameters)
 		{
-			super("x-www-form-urlencoded", UTF8.displayName(), parameters.toString().getBytes(UTF8));
+			super("application/x-www-form-urlencoded", UTF8.displayName(), parameters.toString().getBytes(UTF8));
 		}
 	}
 

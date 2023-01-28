@@ -252,6 +252,8 @@ public final class ObjectUtils
 
 	/**
 	 * Creates a simple key-value entry.
+	 * @param <K> the key type.
+	 * @param <V> the value type.
 	 * @param key the key.
 	 * @param value the value.
 	 * @return a new entry.

@@ -9,8 +9,10 @@ import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -250,6 +252,8 @@ public final class ObjectUtils
 
 	/**
 	 * Creates a simple key-value entry.
+	 * @param <K> the key type.
+	 * @param <V> the value type.
 	 * @param key the key.
 	 * @param value the value.
 	 * @return a new entry.
@@ -292,4 +296,45 @@ public final class ObjectUtils
 		}
 	}
 
+	/**
+	 * Transforms an Enumeration to an {@link Iterable} class.
+	 * @param <T> the object type in the enumeration.
+	 * @param enumeration the input enumeration
+	 * @return an Iterable that encapsulates to enumeration.
+	 */
+	public static <T> Iterable<T> enumerationToIterable(Enumeration<T> enumeration)
+	{
+		return new EnumerationEncapsulator<T>(enumeration);
+	}
+	
+	private static class EnumerationEncapsulator<T> implements Iterable<T>
+	{
+		private Enumeration<T> enumeration;
+		
+		EnumerationEncapsulator(Enumeration<T> enumeration)
+		{
+			this.enumeration = enumeration;
+		}
+		
+		@Override
+		public Iterator<T> iterator()
+		{
+			return new Iterator<T>() 
+			{
+				@Override
+				public boolean hasNext()
+				{
+					return enumeration.hasMoreElements();
+				}
+
+				@Override
+				public T next() 
+				{
+					return enumeration.nextElement();
+				}
+			};
+		}
+		
+	}
+	
 }

@@ -92,7 +92,7 @@ public final class SQLUtils
 	 * @param connection the connection to create a prepared statement and execute from.
 	 * @param query the query statement to execute.
 	 * @param parameterList the list of parameter sets to pass to the query for each update. 
-	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @return the update result returned (in number of rows affected per corresponding query).
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
@@ -107,7 +107,7 @@ public final class SQLUtils
 	 * @param query the query statement to execute.
 	 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 	 * @param parameterList the list of parameter sets to pass to the query for each update. 
-	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @return the update result returned (in number of rows affected per corresponding query).
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
@@ -121,7 +121,7 @@ public final class SQLUtils
 	 * @param connection the connection to create a prepared statement and execute from.
 	 * @param query the query statement to execute.
 	 * @param parameterList the list of parameter sets to pass to the query for each update. 
-	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @return the update result returned (in number of rows affected per corresponding query).
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
@@ -136,7 +136,7 @@ public final class SQLUtils
 	 * @param query the query statement to execute.
 	 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 	 * @param parameterList the list of parameter sets to pass to the query for each update. 
-	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @return the update result returned (in number of rows affected per corresponding query).
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
@@ -153,7 +153,7 @@ public final class SQLUtils
 	 * @param connection the connection to create a prepared statement and execute from.
 	 * @param query the query statement to execute.
 	 * @param parameterList the list of parameter sets to pass to the query for each update. 
-	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @return the update result returned (in number of rows affected per corresponding query).
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
@@ -168,7 +168,7 @@ public final class SQLUtils
 	 * @param query the query statement to execute.
 	 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 	 * @param parameterList the list of parameter sets to pass to the query for each update. 
-	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @return the update result returned (in number of rows affected per corresponding query).
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
@@ -182,7 +182,7 @@ public final class SQLUtils
 	 * @param connection the connection to create a prepared statement and execute from.
 	 * @param query the query statement to execute.
 	 * @param parameterList the list of parameter sets to pass to the query for each update. 
-	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @return the update result returned (in number of rows affected per corresponding query).
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
@@ -197,7 +197,7 @@ public final class SQLUtils
 	 * @param query the query statement to execute.
 	 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 	 * @param parameterList the list of parameter sets to pass to the query for each update. 
-	 * @return the update result returned (usually number of rows affected and or generated ids).
+	 * @return the update result returned (in number of rows affected per corresponding query).
 	 * @throws SQLException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */

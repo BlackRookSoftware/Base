@@ -17,6 +17,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.Savepoint;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.AbstractMap;
@@ -31,7 +32,7 @@ import java.util.Map.Entry;
 import java.util.TreeMap;
 
 /**
- * Slim SQL utility class.
+ * Slimmer SQL utility class.
  * This is a truncated version of Black Rook SQL - no reflection.
  * @author Matthew Tropiano
  */
@@ -39,6 +40,40 @@ public final class SQLUtils
 {
 	/** Default batch size. */
 	public static final int DEFAULT_BATCH_SIZE = 1024;
+
+	/**
+	 * Returns the names of the generated ids in an update ResultSet in the order that they appear in the result.
+	 * @param set the ResultSet to get the ids from.
+	 * @return an array of all of the ids.
+	 * @throws SQLException if something goes wrong.
+	 */
+	public static Object[] getAllGeneratedIdsFromResultSet(ResultSet set) throws SQLException
+	{
+		List<Object> vect = new ArrayList<Object>();
+		while (set.next())
+			vect.add(set.getObject(1));
+
+		Object[] out = new Object[vect.size()];
+		int x = 0;
+		for (Object obj : vect)
+			out[x++] = obj;
+		return out;
+	}
+
+	/**
+	 * Returns the names of the columns in a ResultSet in the order that they appear in the result.
+	 * @param set the ResultSet to get the columns from.
+	 * @return an array of all of the columns.
+	 * @throws SQLException if something goes wrong.
+	 */
+	public static String[] getAllColumnNamesFromResultSet(ResultSet set) throws SQLException
+	{
+		ResultSetMetaData md = set.getMetaData();
+		String[] out = new String[md.getColumnCount()];
+		for (int i = 0; i < out.length; i++)
+			out[i] = md.getColumnName(i+1);
+		return out;
+	}
 
 	/**
 	 * Performs a query on a connection and extracts the data into a single {@link Row}.
@@ -255,7 +290,7 @@ public final class SQLUtils
 	 * Starts a transaction with a provided level.
 	 * <p>The connection gets {@link Connection#setAutoCommit(boolean)} called on it with a FALSE parameter,
 	 * and sets the transaction isolation level. These settings are restored when the transaction is 
-	 * finished via {@link Transaction#close()}, {@link Transaction#commit()}, or {@link Transaction#rollback()}.
+	 * finished via {@link Transaction#complete()} or {@link Transaction#abort()}.
 	 * <p>It is recommended to use an auto-closing mechanism to ensure that the transaction is completed and the connection transaction
 	 * state is restored, or else this connection will be left in a bad state!
 	 * @param connection the connection to create a prepared statement and execute from.
@@ -263,9 +298,47 @@ public final class SQLUtils
 	 * @return a new transaction.
 	 * @throws SQLException if this transaction could not be prepared.
 	 */
-	public static Transaction getTransaction(Connection connection, TransactionLevel transactionLevel) throws SQLException
+	public static Transaction startTransaction(Connection connection, TransactionLevel transactionLevel) throws SQLException
 	{
 		return new Transaction(connection, transactionLevel);
+	}
+
+	/**
+	 * Starts a transaction with a provided level, calls the provided function, and finishes the transaction, if unfinished (closing it).
+	 * <p>The connection gets {@link Connection#setAutoCommit(boolean)} called on it with a FALSE parameter,
+	 * and sets the transaction isolation level. These settings are restored when the transaction is 
+	 * finished the end of the function execution.
+	 * @param connection the connection to create a prepared statement and execute from.
+	 * @param transactionLevel the transaction level to set on this transaction.
+	 * @param transactionConsumer the transaction consumer function to call.
+	 * @throws SQLException if this transaction could not be prepared, or an exception occurs during function call.
+	 */
+	public static void startTransactionAnd(Connection connection, TransactionLevel transactionLevel, TransactionConsumer transactionConsumer) throws SQLException
+	{
+		try (Transaction trn = new Transaction(connection, transactionLevel))
+		{
+			transactionConsumer.apply(trn);
+		}
+	}
+
+	/**
+	 * Starts a transaction with a provided level, calls the provided function, and finishes the transaction, if unfinished (closing it).
+	 * <p>The connection gets {@link Connection#setAutoCommit(boolean)} called on it with a FALSE parameter,
+	 * and sets the transaction isolation level. These settings are restored when the transaction is 
+	 * finished the end of the function execution.
+	 * @param <R> the result type from the function call.
+	 * @param connection the connection to create a prepared statement and execute from.
+	 * @param transactionLevel the transaction level to set on this transaction.
+	 * @param transactionFunction the transaction function to call. Parameter is the created transaction.
+	 * @return a new transaction.
+	 * @throws SQLException if this transaction could not be prepared, or an exception occurs during function call.
+	 */
+	public static <R> R startTransactionAnd(Connection connection, TransactionLevel transactionLevel, TransactionFunction<R> transactionFunction) throws SQLException
+	{
+		try (Transaction trn = new Transaction(connection, transactionLevel))
+		{
+			return transactionFunction.apply(trn);
+		}
 	}
 
 	/**
@@ -280,23 +353,22 @@ public final class SQLUtils
 	{
 		Result out = null;
 	
-		int i = 1;
-		for (Object obj : parameters)
-			statement.setObject(i++, obj);
+		for (int i = 0; i < parameters.length; i++)
+			statement.setObject(i + 1, parameters[i]);
 		
 		if (update)
 		{
 			int rows = statement.executeUpdate();
 			try (ResultSet resultSet = statement.getGeneratedKeys())
 			{
-				out = createResult(resultSet, true, rows);
+				out = new Result(rows, resultSet);
 			}
 		}
 		else
 		{
 			try (ResultSet resultSet = statement.executeQuery())
 			{
-				out = createResult(resultSet, false, -1);
+				out = new Result(resultSet);
 			}
 		}
 		return out;
@@ -385,37 +457,6 @@ public final class SQLUtils
 			System.arraycopy(execute, 0, out, cursor, execute.length);
 		}
 		
-		return out;
-	}
-
-	/**
-	 * Creates a {@link Result} from a result set.
-	 * The result set is assumed to be at the beginning of the set.
-	 */
-	private static Result createResult(ResultSet resultSet, boolean update, int rows) throws SQLException
-	{
-		Result out = null;
-	
-		if (update)
-			out = new Result(rows, resultSet);
-		else
-			out = new Result(resultSet);
-		
-		return out;
-	}
-
-	/**
-	 * Returns the names of the columns in a ResultSet in the order that they appear in the result.
-	 * @param set the ResultSet to get the columns from.
-	 * @return an array of all of the columns.
-	 * @throws SQLException if something goes wrong.
-	 */
-	private static String[] getAllColumnNamesFromResultSet(ResultSet set) throws SQLException
-	{
-		ResultSetMetaData md = set.getMetaData();
-		String[] out = new String[md.getColumnCount()];
-		for (int i = 0; i < out.length; i++)
-			out[i] = md.getColumnName(i+1);
 		return out;
 	}
 
@@ -971,15 +1012,7 @@ public final class SQLUtils
 			this.update = true;
 			this.rowCount = rowsAffected;
 			this.rows = null;
-			
-			List<Object> vect = new ArrayList<Object>();
-			while (genKeys.next())
-				vect.add(genKeys.getLong(1));
-			
-			this.nextId = new Object[vect.size()];
-			int x = 0;
-			for (Object obj : vect)
-				this.nextId[x++] = obj; 
+			this.nextId = getAllGeneratedIdsFromResultSet(genKeys);
 		}
 
 		/**
@@ -1169,42 +1202,351 @@ public final class SQLUtils
 		}
 
 		/**
+		 * Performs a query on this transaction and extracts the data into a single {@link Row}.
+		 * @param query the query statement to execute.
+		 * @param parameters list of parameters for parameterized queries.
+		 * @return the single result row returned, or null if no row returned.
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @see #getResult(Connection, String, Object...)
+		 */
+		public Row getRow(String query, Object... parameters) throws SQLException
+		{
+			verifyUnfinished();
+			return SQLUtils.getRow(connection, query, parameters);
+		}
+
+		/**
+		 * Performs a query on this transaction and extracts the data into a {@link Result}.
+		 * @param query the query statement to execute.
+		 * @param parameters list of parameters for parameterized queries.
+		 * @return the result of the query.
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 */
+		public Result getResult(String query, Object... parameters) throws SQLException
+		{
+			verifyUnfinished();
+			return SQLUtils.getResult(connection, query, parameters);
+		}
+
+		/**
+		 * Performs an update query (INSERT, DELETE, UPDATE, or other commands that do not return rows)
+		 * on this transaction and extracts the data/affected data/generated data into a {@link Result}.
+		 * @param query the query statement to execute.
+		 * @param parameters list of parameters for parameterized queries.
+		 * @return the update result returned (usually number of rows affected and or generated ids).
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 */
+		public Result getUpdateResult(String query, Object... parameters) throws SQLException
+		{
+			verifyUnfinished();
+			return SQLUtils.getUpdateResult(connection, query, parameters);
+		}
+
+		/**
+		 * Performs a series of update queries on a single statement on this transaction and returns the batch result.
+		 * @param query the query statement to execute.
+		 * @param parameterList the list of parameter sets to pass to the query for each update. 
+		 * @return the update result returned (in number of rows affected per corresponding query).
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws UnsupportedOperationException if not implemented by the driver.
+		 */
+		public int[] getUpdateBatch(String query, Object[][] parameterList) throws SQLException
+		{
+			return getUpdateBatch(query, DEFAULT_BATCH_SIZE, Arrays.asList(parameterList));
+		}
+
+		/**
+		 * Performs a series of update queries on a single statement on this transaction and returns the batch result.
+		 * @param query the query statement to execute.
+		 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
+		 * @param parameterList the list of parameter sets to pass to the query for each update. 
+		 * @return the update result returned (in number of rows affected per corresponding query).
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws UnsupportedOperationException if not implemented by the driver.
+		 */
+		public int[] getUpdateBatch(String query, int granularity, Object[][] parameterList) throws SQLException
+		{
+			return getUpdateBatch(query, granularity, Arrays.asList(parameterList));
+		}
+
+		/**
+		 * Performs a series of update queries on a single statement on this transaction and returns the batch result.
+		 * @param query the query statement to execute.
+		 * @param parameterList the list of parameter sets to pass to the query for each update. 
+		 * @return the update result returned (in number of rows affected per corresponding query).
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws UnsupportedOperationException if not implemented by the driver.
+		 */
+		public int[] getUpdateBatch(String query, Collection<Object[]> parameterList) throws SQLException
+		{
+			return getUpdateBatch(query, DEFAULT_BATCH_SIZE, parameterList);
+		}
+
+		/**
+		 * Performs a series of update queries on a single statement on this transaction and returns the batch result.
+		 * @param query the query statement to execute.
+		 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
+		 * @param parameterList the list of parameter sets to pass to the query for each update. 
+		 * @return the update result returned (in number of rows affected per corresponding query).
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws UnsupportedOperationException if not implemented by the driver.
+		 */
+		public int[] getUpdateBatch(String query, int granularity, Collection<Object[]> parameterList) throws SQLException 
+		{
+			verifyUnfinished();
+			return SQLUtils.getUpdateBatch(connection, query, granularity, parameterList);
+		}
+
+		/**
+		 * Performs a series of update queries on a single statement on this transaction and returns the batch result.
+		 * @param query the query statement to execute.
+		 * @param parameterList the list of parameter sets to pass to the query for each update. 
+		 * @return the update result returned (in number of rows affected per corresponding query).
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws UnsupportedOperationException if not implemented by the driver.
+		 */
+		public long[] getUpdateLargeBatch(String query, Object[][] parameterList) throws SQLException
+		{
+			return getUpdateLargeBatch(query, DEFAULT_BATCH_SIZE, Arrays.asList(parameterList));
+		}
+
+		/**
+		 * Performs a series of update queries on a single statement on this transaction and returns the batch result.
+		 * @param query the query statement to execute.
+		 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
+		 * @param parameterList the list of parameter sets to pass to the query for each update. 
+		 * @return the update result returned (in number of rows affected per corresponding query).
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws UnsupportedOperationException if not implemented by the driver.
+		 */
+		public long[] getUpdateLargeBatch(String query, int granularity, Object[][] parameterList) throws SQLException
+		{
+			return getUpdateLargeBatch(query, granularity, Arrays.asList(parameterList));
+		}
+
+		/**
+		 * Performs a series of update queries on a single statement on this transaction and returns the batch result.
+		 * @param query the query statement to execute.
+		 * @param parameterList the list of parameter sets to pass to the query for each update. 
+		 * @return the update result returned (in number of rows affected per corresponding query).
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws UnsupportedOperationException if not implemented by the driver.
+		 */
+		public long[] getUpdateLargeBatch(String query, Collection<Object[]> parameterList) throws SQLException
+		{
+			return getUpdateLargeBatch(query, DEFAULT_BATCH_SIZE, parameterList);
+		}
+
+		/**
+		 * Performs a series of update queries on a single statement on this transaction and returns the batch result.
+		 * @param query the query statement to execute.
+		 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
+		 * @param parameterList the list of parameter sets to pass to the query for each update. 
+		 * @return the update result returned (in number of rows affected per corresponding query).
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws UnsupportedOperationException if not implemented by the driver.
+		 */
+		public long[] getUpdateLargeBatch(String query, int granularity, Collection<Object[]> parameterList) throws SQLException 
+		{
+			verifyUnfinished();
+			return SQLUtils.getUpdateLargeBatch(connection, query, granularity, parameterList);
+		}
+
+		/**
+		 * Performs an update query (INSERT, DELETE, UPDATE, or other commands that do not return rows)
+		 * and extracts each set of result data into a {@link Result}.
+		 * <p>This is usually more efficient than multiple calls of {@link #getUpdateResult(String, Object...)},
+		 * since it uses the same prepared statement. However, it is not as efficient as 
+		 * {@link #getUpdateBatch(String, int, Collection)} or {@link #getUpdateLargeBatch(String, int, Collection)},
+		 * but for this method, you will get the generated ids in each result, if any.
+		 * @param query the query statement to execute.
+		 * @param parameterList the list of parameter sets to pass to the query for each update. 
+		 * @return the list of update results returned, each corresponding to an update.
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 */
+		public Result[] getUpdateBatchResult(String query, Object[][] parameterList) throws SQLException
+		{
+			return getUpdateBatchResult(query, Arrays.asList(parameterList));
+		}
+
+		/**
+		 * Performs an update query (INSERT, DELETE, UPDATE, or other commands that do not return rows)
+		 * and extracts each set of result data into a {@link Result}.
+		 * <p>This is usually more efficient than multiple calls of {@link #getUpdateResult(String, Object...)},
+		 * since it uses the same prepared statement. However, it is not as efficient as 
+		 * {@link #getUpdateBatch(String, int, Collection)} or {@link #getUpdateLargeBatch(String, int, Collection)},
+		 * but for this method, you will get the generated ids in each result, if any.
+		 * @param query the query statement to execute.
+		 * @param parameterList the list of parameter sets to pass to the query for each update. 
+		 * @return the list of update results returned, each corresponding to an update.
+		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 */
+		public Result[] getUpdateBatchResult(String query, Collection<Object[]> parameterList) throws SQLException
+		{
+			verifyUnfinished();
+			return SQLUtils.getUpdateBatchResult(connection, query, parameterList);
+		}
+
+		/**
+		 * @return true if this transaction has been completed or false if more methods can be invoked on it.
+		 */
+		public boolean isFinished()
+		{
+			return finished; 
+		}	
+		
+		/**
+		 * Completes this transaction and prevents further calls on it.
+		 * This calls {@link Connection#commit()} on the encapsulated connection and 
+		 * resets its previous transaction level state plus its auto-commit state.
+		 * @throws IllegalStateException if this transaction was already finished.
+		 * @throws SQLException if this causes a database error.
+		 */
+		public void complete() throws SQLException
+		{
+			verifyUnfinished();
+			connection.commit();
+			finish();
+		}
+		
+		/**
+		 * Aborts this transaction and prevents further calls on it.
+		 * This calls {@link Connection#rollback()} on the encapsulated connection and 
+		 * resets its previous transaction level state plus its auto-commit state.
+		 * @throws IllegalStateException if this transaction was already finished.
+		 * @throws SQLException if this causes a database error.
+		 */
+		public void abort() throws SQLException
+		{
+			verifyUnfinished();
+			connection.rollback();
+			finish();
+		}
+		
+		/**
 		 * Commits the actions completed so far in this transaction.
-		 * @throws IllegalStateException if this transaction was already committed/rolled back.
+		 * This is also called during {@link #complete()}.
+		 * @throws IllegalStateException if this transaction was already finished.
 		 * @throws SQLException if this causes a database error.
 		 */
 		public void commit() throws SQLException
 		{
-			if (finished)
-				throw new IllegalStateException("This transaction is already finished.");
+			verifyUnfinished();
 			connection.commit();
-			finished = true;
 		}
-
+		
 		/**
-		 * Rolls back this entire transaction.
-		 * @throws IllegalStateException if this transaction was already committed/rolled back.
+		 * Rolls back the actions completed so far in this transaction.
+		 * This is also called during {@link #abort()}.
+		 * @throws IllegalStateException if this transaction was already finished.
 		 * @throws SQLException if this causes a database error.
 		 */
 		public void rollback() throws SQLException
 		{
-			if (finished)
-				throw new IllegalStateException("This transaction is already finished.");
+			verifyUnfinished();
 			connection.rollback();
-			finished = true;
 		}
-
+		
+		/**
+		 * Rolls back this transaction to a {@link Savepoint}. Everything executed
+		 * after the {@link Savepoint} passed into this method will be rolled back.
+		 * @param savepoint the {@link Savepoint} to roll back to.
+		 * @throws IllegalStateException if this transaction was already finished.
+		 * @throws SQLException if this causes a database error.
+		 */
+		public void rollback(Savepoint savepoint) throws SQLException
+		{
+			verifyUnfinished();
+			connection.rollback(savepoint);
+		}
+		
+		/**
+		 * Calls {@link Connection#setSavepoint()} on the encapsulated connection.
+		 * @return a generated {@link Savepoint} of this transaction.
+		 * @throws IllegalStateException if this transaction was already finished.
+		 * @throws SQLException if this causes a database error.
+		 */
+		public Savepoint setSavepoint() throws SQLException
+		{
+			verifyUnfinished();
+			return connection.setSavepoint();
+		}
+		
+		/**
+		 * Calls {@link Connection#setSavepoint()} on the encapsulated connection.
+		 * @param name the name of the savepoint.
+		 * @return a generated {@link Savepoint} of this transaction.
+		 * @throws IllegalStateException if this transaction was already finished.
+		 * @throws SQLException if this causes a database error.
+		 */
+		public Savepoint setSavepoint(String name) throws SQLException
+		{
+			verifyUnfinished();
+			return connection.setSavepoint(name);
+		}
+		
 		/**
 		 * If this transaction is not finished, this aborts it.
-		 * The connection's isolation and "auto-commit" properties are restored.
+		 * @see AutoCloseable#close()
+		 * @see #isFinished()
+		 * @see #abort()
 		 */
 		@Override
-		public void close() throws SQLException
+		public void close()
 		{
-			if (!finished)
-				connection.rollback();
+			if (!isFinished())
+			{
+				try {
+					abort();
+				} catch (SQLException e) { /* Eat exception. */ }
+			}
+		}
+
+		private void verifyUnfinished()
+		{
+			if (isFinished())
+				throw new IllegalStateException("This transaction is already finished.");
+		}
+		
+		private void finish() throws SQLException
+		{
 			connection.setTransactionIsolation(previousLevelState);
 			connection.setAutoCommit(previousAutoCommit);
+			finished = true;
 		}
+		
 	}
+
+	/**
+	 * A special consumer that takes a Transaction, but throws {@link SQLException}s. 
+	 */
+	@FunctionalInterface
+	public interface TransactionConsumer
+	{
+		/**
+		 * Accepts the transaction, does something with it, and returns a result. 
+		 * @param transaction the open connection.
+		 * @throws SQLException if a SQLException occurs.
+		 */
+		void apply(Transaction transaction) throws SQLException;
+		
+	}
+	
+	/**
+	 * A special function that takes a Transaction, but throws {@link SQLException}s. 
+	 * @param <R> the result type.
+	 */
+	@FunctionalInterface
+	public interface TransactionFunction<R>
+	{
+		/**
+		 * Accepts the transaction, does something with it, and returns a result. 
+		 * @param transaction the open connection.
+		 * @return the result from the call.
+		 * @throws SQLException if a SQLException occurs.
+		 */
+		R apply(Transaction transaction) throws SQLException;
+		
+	}
+	
 }

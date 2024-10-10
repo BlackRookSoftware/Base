@@ -38,8 +38,6 @@ import java.util.Properties;
 import java.util.TreeMap;
 import java.util.concurrent.TimeoutException;
 
-import com.blackrook.base.util.SQLUtils.PoolConnection.Transaction;
-
 /**
  * Slimmer SQL utility class.
  * This is a truncated version of Black Rook SQL - no reflection.
@@ -64,11 +62,7 @@ public final class SQLUtils
 		while (set.next())
 			vect.add(set.getObject(1));
 
-		Object[] out = new Object[vect.size()];
-		int x = 0;
-		for (Object obj : vect)
-			out[x++] = obj;
-		return out;
+		return vect.toArray(new Object[vect.size()]);
 	}
 
 	/**
@@ -515,7 +509,7 @@ public final class SQLUtils
 	}
 
 	/**
-	 * A special consumer that takes a {@link Transaction}, but throws {@link SQLException}s. 
+	 * A special consumer that takes a {@link PoolConnection.Transaction}, but throws {@link SQLException}s. 
 	 */
 	@FunctionalInterface
 	public interface TransactionConsumer
@@ -525,12 +519,12 @@ public final class SQLUtils
 		 * @param transaction the open connection.
 		 * @throws SQLException if a SQLException occurs.
 		 */
-		void accept(Transaction transaction) throws SQLException;
+		void accept(PoolConnection.Transaction transaction) throws SQLException;
 		
 	}
 
 	/**
-	 * A special function that takes a {@link Transaction}, but throws {@link SQLException}s. 
+	 * A special function that takes a {@link PoolConnection.Transaction}, but throws {@link SQLException}s. 
 	 * @param <R> the result type.
 	 */
 	@FunctionalInterface
@@ -542,7 +536,7 @@ public final class SQLUtils
 		 * @return the result from the call.
 		 * @throws SQLException if a SQLException occurs.
 		 */
-		R apply(Transaction transaction) throws SQLException;
+		R apply(PoolConnection.Transaction transaction) throws SQLException;
 		
 	}
 

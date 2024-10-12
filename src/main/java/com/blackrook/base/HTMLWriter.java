@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2020 Black Rook Software
+ * Copyright (c) 2020-2024 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -1052,7 +1052,7 @@ public class HTMLWriter implements Flushable, AutoCloseable
 		flush();
 	}
 
-	private void writeEndTag(String tagName, Attribute... attributes) throws IOException
+	private void writeEndTag(String tagName) throws IOException
 	{
 		writer.append('<').append('/').append(tagName).append('>');
 		flush();

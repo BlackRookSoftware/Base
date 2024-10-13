@@ -86,13 +86,14 @@ public final class SQLUtils
 	 * @param query the query statement to execute.
 	 * @param parameters list of parameters for parameterized queries.
 	 * @return the result of the query.
-	 * @throws SQLException if the query cannot be executed or the query causes an error.
+	 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 	 */
-	public static Result getResult(Connection connection, String query, Object ... parameters) throws SQLException
+	public static Result getResult(Connection connection, String query, Object ... parameters)
 	{
-		try (PreparedStatement statement = connection.prepareStatement(query))
-		{
+		try (PreparedStatement statement = connection.prepareStatement(query)) {
 			return callStatement(statement, false, parameters);
+		} catch (SQLException e) {
+			throw new SQLRuntimeException(e);
 		}
 	}
 
@@ -103,13 +104,14 @@ public final class SQLUtils
 	 * @param query the query statement to execute.
 	 * @param parameters list of parameters for parameterized queries.
 	 * @return the update result returned (usually number of rows affected and or generated ids).
-	 * @throws SQLException if the query cannot be executed or the query causes an error.
+	 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 	 */
-	public static Result getUpdateResult(Connection connection, String query, Object ... parameters) throws SQLException
+	public static Result getUpdateResult(Connection connection, String query, Object ... parameters)
 	{
-		try (PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS))
-		{
+		try (PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
 			return callStatement(statement, true, parameters);
+		} catch (SQLException e) {
+			throw new SQLRuntimeException(e);
 		}
 	}
 
@@ -120,14 +122,15 @@ public final class SQLUtils
 	 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 	 * @param parameterList the list of parameter sets to pass to the query for each update. 
 	 * @return the update result returned (in number of rows affected per corresponding query).
-	 * @throws SQLException if the query cannot be executed or the query causes an error.
+	 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
-	public static int[] getUpdateBatch(Connection connection, String query, int granularity, Collection<Object[]> parameterList) throws SQLException
+	public static int[] getUpdateBatch(Connection connection, String query, int granularity, Collection<Object[]> parameterList)
 	{
-		try (PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS))
-		{
+		try (PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
 			return callBatch(statement, granularity, parameterList);
+		} catch (SQLException e) {
+			throw new SQLRuntimeException(e);
 		}
 	}
 
@@ -138,14 +141,15 @@ public final class SQLUtils
 	 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 	 * @param parameterList the list of parameter sets to pass to the query for each update. 
 	 * @return the update result returned (in number of rows affected per corresponding query).
-	 * @throws SQLException if the query cannot be executed or the query causes an error.
+	 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 	 * @throws UnsupportedOperationException if not implemented by the driver.
 	 */
-	public static long[] getUpdateLargeBatch(Connection connection, String query, int granularity, Collection<Object[]> parameterList) throws SQLException
+	public static long[] getUpdateLargeBatch(Connection connection, String query, int granularity, Collection<Object[]> parameterList)
 	{
-		try (PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS))
-		{
+		try (PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
 			return callLargeBatch(statement, granularity, parameterList);
+		} catch (SQLException e) {
+			throw new SQLRuntimeException(e);
 		}
 	}
 
@@ -159,17 +163,18 @@ public final class SQLUtils
 	 * @param query the query statement to execute.
 	 * @param parameterList the list of parameter sets to pass to the query for each update. 
 	 * @return the list of update results returned, each corresponding to an update.
-	 * @throws SQLException if the query cannot be executed or the query causes an error.
+	 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 	 */
-	public static Result[] getUpdateBatchResult(Connection connection, String query, Collection<Object[]> parameterList) throws SQLException
+	public static Result[] getUpdateBatchResult(Connection connection, String query, Collection<Object[]> parameterList)
 	{
-		try (PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS))
-		{
+		try (PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
 			int i = 0;
 			Result[] out = new Result[parameterList.size()];
 			for (Object[] params : parameterList)
 				out[i++] = callStatement(statement, true, params);
 			return out;
+		} catch (SQLException e) {
+			throw new SQLRuntimeException(e);
 		}
 	}
 
@@ -293,6 +298,65 @@ public final class SQLUtils
 	}
 
 	/**
+	 * An exception thrown to wrap a SQLException. 
+	 * @author Matthew Tropiano
+	 */
+	public static class SQLRuntimeException extends RuntimeException
+	{
+		private static final long serialVersionUID = -3666456110840432591L;
+
+		/**
+		 * Creates a new SQLRuntimeException from a {@link SQLException}.
+		 * @param e the exception to wrap.
+		 */
+		public SQLRuntimeException(SQLException e)
+		{
+			super(e);
+		}
+		
+		/**
+		 * Creates a new SQLRuntimeException from an {@link IOException}.
+		 * @param e the exception to wrap.
+		 * @since 1.1.0
+		 */
+		public SQLRuntimeException(IOException e)
+		{
+			super(e);
+		}
+		
+		/**
+		 * Creates a new SQLRuntimeException from a {@link SQLException}.
+		 * @param message the message.
+		 * @param e the exception to wrap.
+		 * @since 1.1.0
+		 */
+		public SQLRuntimeException(String message, SQLException e)
+		{
+			super(message, e);
+		}
+		
+		/**
+		 * Creates a new SQLRuntimeException from an {@link IOException}.
+		 * @param message the message.
+		 * @param e the exception to wrap.
+		 * @since 1.1.0
+		 */
+		public SQLRuntimeException(String message, IOException e)
+		{
+			super(message, e);
+		}
+		
+		/**
+		 * @return the SQLException that caused this exception.
+		 */
+		public SQLException getSQLException()
+		{
+			return (SQLException)getCause();
+		}
+		
+	}
+
+	/**
 	 * Defines what all database connections can do.
 	 */
 	public static interface ConnectionType
@@ -303,10 +367,10 @@ public final class SQLUtils
 		 * @param query the query statement to execute.
 		 * @param parameters list of parameters for parameterized queries.
 		 * @return the single result row returned, or null if no row returned.
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 * @see #getResult(Connection, String, Object...)
 		 */
-		default Row getRow(String query, Object ... parameters) throws SQLException
+		default Row getRow(String query, Object ... parameters)
 		{
 			return getResult(query, parameters).getRow();
 		}
@@ -317,9 +381,9 @@ public final class SQLUtils
 		 * @param query the query statement to execute.
 		 * @param parameters list of parameters for parameterized queries.
 		 * @return the result of the query.
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 */
-		Result getResult(String query, Object ... parameters) throws SQLException;
+		Result getResult(String query, Object ... parameters);
 
 		/**
 		 * Performs an update query (INSERT, DELETE, UPDATE, or other commands that do not return rows)
@@ -328,9 +392,9 @@ public final class SQLUtils
 		 * @param query the query statement to execute.
 		 * @param parameters list of parameters for parameterized queries.
 		 * @return the update result returned (usually number of rows affected and or generated ids).
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 */
-		Result getUpdateResult(String query, Object ... parameters) throws SQLException;
+		Result getUpdateResult(String query, Object ... parameters);
 
 		/**
 		 * Performs a series of update queries on a single statement on a connection and returns the batch result.
@@ -338,10 +402,10 @@ public final class SQLUtils
 		 * @param query the query statement to execute.
 		 * @param parameterList the list of parameter sets to pass to the query for each update. 
 		 * @return the update result returned (in number of rows affected per corresponding query).
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 * @throws UnsupportedOperationException if not implemented by the driver.
 		 */
-		default int[] getUpdateBatch(String query, Object[][] parameterList) throws SQLException
+		default int[] getUpdateBatch(String query, Object[][] parameterList)
 		{
 			return getUpdateBatch(query, DEFAULT_BATCH_SIZE, Arrays.asList(parameterList));
 		}
@@ -353,10 +417,10 @@ public final class SQLUtils
 		 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 		 * @param parameterList the list of parameter sets to pass to the query for each update. 
 		 * @return the update result returned (in number of rows affected per corresponding query).
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 * @throws UnsupportedOperationException if not implemented by the driver.
 		 */
-		default int[] getUpdateBatch(String query, int granularity, Object[][] parameterList) throws SQLException
+		default int[] getUpdateBatch(String query, int granularity, Object[][] parameterList)
 		{
 			return getUpdateBatch(query, granularity, Arrays.asList(parameterList));
 		}
@@ -367,10 +431,10 @@ public final class SQLUtils
 		 * @param query the query statement to execute.
 		 * @param parameterList the list of parameter sets to pass to the query for each update. 
 		 * @return the update result returned (in number of rows affected per corresponding query).
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 * @throws UnsupportedOperationException if not implemented by the driver.
 		 */
-		default int[] getUpdateBatch(String query, Collection<Object[]> parameterList) throws SQLException
+		default int[] getUpdateBatch(String query, Collection<Object[]> parameterList)
 		{
 			return getUpdateBatch(query, DEFAULT_BATCH_SIZE, parameterList);
 		}
@@ -382,10 +446,10 @@ public final class SQLUtils
 		 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 		 * @param parameterList the list of parameter sets to pass to the query for each update. 
 		 * @return the update result returned (in number of rows affected per corresponding query).
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 * @throws UnsupportedOperationException if not implemented by the driver.
 		 */
-		int[] getUpdateBatch(String query, int granularity, Collection<Object[]> parameterList) throws SQLException;
+		int[] getUpdateBatch(String query, int granularity, Collection<Object[]> parameterList);
 
 		/**
 		 * Performs a series of update queries on a single statement on a connection and returns the batch result.
@@ -393,10 +457,10 @@ public final class SQLUtils
 		 * @param query the query statement to execute.
 		 * @param parameterList the list of parameter sets to pass to the query for each update. 
 		 * @return the update result returned (in number of rows affected per corresponding query).
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 * @throws UnsupportedOperationException if not implemented by the driver.
 		 */
-		default long[] getUpdateLargeBatch(String query, Object[][] parameterList) throws SQLException
+		default long[] getUpdateLargeBatch(String query, Object[][] parameterList)
 		{
 			return getUpdateLargeBatch(query, DEFAULT_BATCH_SIZE, Arrays.asList(parameterList));
 		}
@@ -408,10 +472,10 @@ public final class SQLUtils
 		 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 		 * @param parameterList the list of parameter sets to pass to the query for each update. 
 		 * @return the update result returned (in number of rows affected per corresponding query).
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 * @throws UnsupportedOperationException if not implemented by the driver.
 		 */
-		default long[] getUpdateLargeBatch(String query, int granularity, Object[][] parameterList) throws SQLException
+		default long[] getUpdateLargeBatch(String query, int granularity, Object[][] parameterList)
 		{
 			return getUpdateLargeBatch(query, granularity, Arrays.asList(parameterList));
 		}
@@ -422,10 +486,10 @@ public final class SQLUtils
 		 * @param query the query statement to execute.
 		 * @param parameterList the list of parameter sets to pass to the query for each update. 
 		 * @return the update result returned (in number of rows affected per corresponding query).
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 * @throws UnsupportedOperationException if not implemented by the driver.
 		 */
-		default long[] getUpdateLargeBatch(String query, Collection<Object[]> parameterList) throws SQLException
+		default long[] getUpdateLargeBatch(String query, Collection<Object[]> parameterList)
 		{
 			return getUpdateLargeBatch(query, DEFAULT_BATCH_SIZE, parameterList);
 		}
@@ -437,10 +501,10 @@ public final class SQLUtils
 		 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 		 * @param parameterList the list of parameter sets to pass to the query for each update. 
 		 * @return the update result returned (in number of rows affected per corresponding query).
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 * @throws UnsupportedOperationException if not implemented by the driver.
 		 */
-		long[] getUpdateLargeBatch(String query, int granularity, Collection<Object[]> parameterList) throws SQLException;
+		long[] getUpdateLargeBatch(String query, int granularity, Collection<Object[]> parameterList);
 
 		/**
 		 * Performs an update query (INSERT, DELETE, UPDATE, or other commands that do not return rows)
@@ -453,9 +517,9 @@ public final class SQLUtils
 		 * @param query the query statement to execute.
 		 * @param parameterList the list of parameter sets to pass to the query for each update. 
 		 * @return the list of update results returned, each corresponding to an update.
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 */
-		default Result[] getUpdateBatchResult(String query, Object[][] parameterList) throws SQLException
+		default Result[] getUpdateBatchResult(String query, Object[][] parameterList)
 		{
 			return getUpdateBatchResult(query, Arrays.asList(parameterList));
 		}
@@ -470,9 +534,9 @@ public final class SQLUtils
 		 * @param query the query statement to execute.
 		 * @param parameterList the list of parameter sets to pass to the query for each update. 
 		 * @return the list of update results returned, each corresponding to an update.
-		 * @throws SQLException if the query cannot be executed or the query causes an error.
+		 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 		 */
-		Result[] getUpdateBatchResult(String query, Collection<Object[]> parameterList) throws SQLException;
+		Result[] getUpdateBatchResult(String query, Collection<Object[]> parameterList);
 		
 	}
 	
@@ -595,6 +659,127 @@ public final class SQLUtils
 	}
 
 	/**
+	 * Core database JDBC connector object.
+	 * From this object, representing a potential link to a remote (or local) database, connections can be spawned.
+	 * @author Matthew Tropiano
+	 */
+	public static class PoolConnector
+	{
+		/** JDBC URL. */
+		private String jdbcURL;
+		/** Info properties. */
+		private Properties info;
+		/** Username. */
+		private String userName;
+		/** Password. */
+		private String password;
+		
+		/**
+		 * Constructs a new database connector.
+		 * @param className	The fully qualified class name of the driver.
+		 * @param jdbcURL The JDBC URL to use.
+		 * @throws RuntimeException if the driver class cannot be found.
+		 */
+		public PoolConnector(String className, String jdbcURL)
+		{
+			this.jdbcURL = jdbcURL;
+			this.info = null;
+			this.userName = null;
+			this.password = null;
+			
+			try {
+				Class.forName(className);
+			} catch (ClassNotFoundException e) {
+				throw new RuntimeException(e);
+			}
+		}
+	
+		/**
+		 * Constructs a new database connector.
+		 * @param className	The fully qualified class name of the driver.
+		 * @param jdbcURL The JDBC URL to use.
+		 * @param info the set of {@link Properties} to pass along to the JDBC {@link DriverManager}.
+		 * @throws RuntimeException if the driver class cannot be found.
+		 */
+		public PoolConnector(String className, String jdbcURL, Properties info)
+		{
+			this(className, jdbcURL);
+			this.info = info;
+		}
+	
+		/**
+		 * Constructs a new database connector.
+		 * @param className	The fully qualified class name of the driver.
+		 * @param jdbcURL The JDBC URL to use.
+		 * @param userName the username.
+		 * @param password the password.
+		 * @throws RuntimeException if the driver class cannot be found.
+		 */
+		public PoolConnector(String className, String jdbcURL, String userName, String password)
+		{
+			this(className, jdbcURL);
+			this.userName = userName;
+			this.password = password;
+		}
+	
+		/**
+		 * Returns the full JDBC URL for this specific connector.
+		 * This differs by implementation and driver.
+		 * @return the URL
+		 */
+		public String getJDBCURL()
+		{
+			return jdbcURL;
+		}
+	
+		/**
+		 * Returns a new, opened JDBC Connection using the credentials stored with this connector.
+		 * @return a {@link DriverManager}-created connection.
+		 * @throws SQLException	if a connection can't be procured.
+		 * @see DriverManager#getConnection(String)
+		 */
+		public PoolConnection getConnection() throws SQLException
+		{
+			if (userName != null)
+				return new PoolConnection(DriverManager.getConnection(getJDBCURL(), userName, password));
+			else if (info != null)
+				return new PoolConnection(DriverManager.getConnection(getJDBCURL(), info));
+			else
+				return new PoolConnection(DriverManager.getConnection(getJDBCURL()));
+		}
+	
+		/**
+		 * Creates a connection, passes it to the provided {@link ConnectionConsumer} function, then closes it.
+		 * @param handler the consumer function that accepts the retrieved connection.
+		 * @throws SQLException if a connection cannot be re-created or re-established.
+		 */
+		public void getConnectionAnd(ConnectionConsumer handler) throws SQLException
+		{
+			try (PoolConnection connection = getConnection())
+			{
+				handler.accept(connection);
+			}
+		}
+		
+		/**
+		 * Creates a connection, passes it to the provided {@link ConnectionFunction}, 
+		 * calls it, closes it, and returns the result.
+		 * @param <R> the return type.
+		 * @param handler the consumer function that accepts the retrieved connection and returns a value.
+		 * @return the return value of the handler function.
+		 * @throws SQLException if a connection cannot be re-created or re-established.
+		 */
+		public <R> R getConnectionAnd(ConnectionFunction<R> handler) throws SQLException
+		{
+			try (PoolConnection connection = getConnection())
+			{
+				return handler.apply(connection);
+			}
+		}
+		
+	}
+
+	/**
 	 * A single pooled connection from a connection pool.
 	 */
 	public static class PoolConnection implements ConnectionType, AutoCloseable
@@ -647,35 +832,35 @@ public final class SQLUtils
 		}
 
 		@Override
-		public Result getResult(String query, Object... parameters) throws SQLException
+		public Result getResult(String query, Object... parameters)
 		{
 			verifyNotInTransaction();
 			return SQLUtils.getResult(connection, query, parameters);
 		}
 
 		@Override
-		public Result getUpdateResult(String query, Object... parameters) throws SQLException 
+		public Result getUpdateResult(String query, Object... parameters)
 		{
 			verifyNotInTransaction();
 			return SQLUtils.getUpdateResult(connection, query, parameters);
 		}
 
 		@Override
-		public int[] getUpdateBatch(String query, int granularity, Collection<Object[]> parameterList) throws SQLException
+		public int[] getUpdateBatch(String query, int granularity, Collection<Object[]> parameterList)
 		{
 			verifyNotInTransaction();
 			return SQLUtils.getUpdateBatch(connection, query, granularity, parameterList);
 		}
 
 		@Override
-		public long[] getUpdateLargeBatch(String query, int granularity, Collection<Object[]> parameterList) throws SQLException 
+		public long[] getUpdateLargeBatch(String query, int granularity, Collection<Object[]> parameterList)
 		{
 			verifyNotInTransaction();
 			return SQLUtils.getUpdateLargeBatch(connection, query, granularity, parameterList);
 		}
 
 		@Override
-		public Result[] getUpdateBatchResult(String query, Collection<Object[]> parameterList) throws SQLException 
+		public Result[] getUpdateBatchResult(String query, Collection<Object[]> parameterList)
 		{
 			verifyNotInTransaction();
 			return SQLUtils.getUpdateBatchResult(connection, query, parameterList);
@@ -776,10 +961,10 @@ public final class SQLUtils
 			 * @param query the query statement to execute.
 			 * @param parameters list of parameters for parameterized queries.
 			 * @return the result of the query.
-			 * @throws SQLException if the query cannot be executed or the query causes an error.
+			 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 			 * @throws IllegalStateException if the transaction has already finished.
 			 */
-			public Result getResult(String query, Object... parameters) throws SQLException
+			public Result getResult(String query, Object... parameters)
 			{
 				verifyUnfinished();
 				return SQLUtils.getResult(connection, query, parameters);
@@ -791,10 +976,10 @@ public final class SQLUtils
 			 * @param query the query statement to execute.
 			 * @param parameters list of parameters for parameterized queries.
 			 * @return the update result returned (usually number of rows affected and or generated ids).
-			 * @throws SQLException if the query cannot be executed or the query causes an error.
+			 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 			 * @throws IllegalStateException if the transaction has already finished.
 			 */
-			public Result getUpdateResult(String query, Object... parameters) throws SQLException
+			public Result getUpdateResult(String query, Object... parameters)
 			{
 				verifyUnfinished();
 				return SQLUtils.getUpdateResult(connection, query, parameters);
@@ -806,11 +991,11 @@ public final class SQLUtils
 			 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 			 * @param parameterList the list of parameter sets to pass to the query for each update. 
 			 * @return the update result returned (in number of rows affected per corresponding query).
-			 * @throws SQLException if the query cannot be executed or the query causes an error.
+			 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 			 * @throws UnsupportedOperationException if not implemented by the driver.
 			 * @throws IllegalStateException if the transaction has already finished.
 			 */
-			public int[] getUpdateBatch(String query, int granularity, Collection<Object[]> parameterList) throws SQLException 
+			public int[] getUpdateBatch(String query, int granularity, Collection<Object[]> parameterList)
 			{
 				verifyUnfinished();
 				return SQLUtils.getUpdateBatch(connection, query, granularity, parameterList);
@@ -822,11 +1007,11 @@ public final class SQLUtils
 			 * @param granularity the amount of statements to execute at a time. If 0 or less, no granularity.
 			 * @param parameterList the list of parameter sets to pass to the query for each update. 
 			 * @return the update result returned (in number of rows affected per corresponding query).
-			 * @throws SQLException if the query cannot be executed or the query causes an error.
+			 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 			 * @throws UnsupportedOperationException if not implemented by the driver.
 			 * @throws IllegalStateException if the transaction has already finished.
 			 */
-			public long[] getUpdateLargeBatch(String query, int granularity, Collection<Object[]> parameterList) throws SQLException 
+			public long[] getUpdateLargeBatch(String query, int granularity, Collection<Object[]> parameterList)
 			{
 				verifyUnfinished();
 				return SQLUtils.getUpdateLargeBatch(connection, query, granularity, parameterList);
@@ -842,10 +1027,10 @@ public final class SQLUtils
 			 * @param query the query statement to execute.
 			 * @param parameterList the list of parameter sets to pass to the query for each update. 
 			 * @return the list of update results returned, each corresponding to an update.
-			 * @throws SQLException if the query cannot be executed or the query causes an error.
+			 * @throws SQLRuntimeException if the query cannot be executed or the query causes an error.
 			 * @throws IllegalStateException if the transaction has already finished.
 			 */
-			public Result[] getUpdateBatchResult(String query, Collection<Object[]> parameterList) throws SQLException
+			public Result[] getUpdateBatchResult(String query, Collection<Object[]> parameterList)
 			{
 				verifyUnfinished();
 				return SQLUtils.getUpdateBatchResult(connection, query, parameterList);
@@ -993,15 +1178,8 @@ public final class SQLUtils
 	 */
 	public static class Pool implements AutoCloseable
 	{
-		/** The JDBC URL of this pool's connections. */
-		private final String jdbcURL;
-		/** The info used for this pool's connections. */
-		private final Properties info;
-		/** The user name used for this pool's connections. */
-		private final String userName;
-		/** The password used for this pool's connections. */
-		private final String password;
-		
+		/** The JDBCConnector to use for this pool's connections. */
+		private final PoolConnector connector;
 		/** List of managed connections. */
 		private final Queue<PoolConnection> availableConnections;
 		/** List of used connections. */
@@ -1009,87 +1187,21 @@ public final class SQLUtils
 		
 		/**
 		 * Creates a new connection pool.
-		 * @param driverClassname the fully qualified class name of the driver.
-		 * @param jdbcURL the JDBC URL to use.
+		 * @param connector the SQL connector to use.
 		 * @param connectionCount the number of connections to pool.
 		 * @throws ClassNotFoundException if the driver could not be found.
 		 * @throws SQLException if a connection cannot be established.
 		 * @throws SQLTimeoutException if at least one of the connections cannot be established due to connection timeout.
 		 */
-		public Pool(String driverClassname, String jdbcURL, int connectionCount) throws ClassNotFoundException, SQLException
+		public Pool(PoolConnector connector, int connectionCount) throws ClassNotFoundException, SQLException
 		{
-			this(driverClassname, jdbcURL, null, null, null, connectionCount);
-		}
-
-		/**
-		 * Creates a new connection pool.
-		 * @param driverClassname the fully qualified class name of the driver.
-		 * @param jdbcURL the JDBC URL to use.
-		 * @param info the connection properties to pass along to the driver. Can be null.
-		 * @param connectionCount the number of connections to pool.
-		 * @throws ClassNotFoundException if the driver could not be found.
-		 * @throws SQLException if a connection cannot be established.
-		 * @throws SQLTimeoutException if at least one of the connections cannot be established due to connection timeout.
-		 */
-		public Pool(String driverClassname, String jdbcURL, Properties info, int connectionCount) throws ClassNotFoundException, SQLException
-		{
-			this(driverClassname, jdbcURL, info, null, null, connectionCount);
-		}
-
-		/**
-		 * Creates a new connection pool.
-		 * @param driverClassname the fully qualified class name of the driver.
-		 * @param jdbcURL the JDBC URL to use.
-		 * @param userName the user name. Can be null.
-		 * @param password the password. Can be null.
-		 * @param connectionCount the number of connections to pool.
-		 * @throws ClassNotFoundException if the driver could not be found.
-		 * @throws SQLException if a connection cannot be established.
-		 * @throws SQLTimeoutException if at least one of the connections cannot be established due to connection timeout.
-		 */
-		public Pool(String driverClassname, String jdbcURL, String userName, String password, int connectionCount) throws ClassNotFoundException, SQLException
-		{
-			this(driverClassname, jdbcURL, null, userName, password, connectionCount);
-		}
-		
-		/**
-		 * Creates a new connection pool.
-		 * @param driverClassname the fully qualified class name of the driver.
-		 * @param jdbcURL the JDBC URL to use.
-		 * @param info the connection properties to pass along to the driver. Can be null.
-		 * @param userName the user name. Can be null.
-		 * @param password the password. Can be null.
-		 * @param connectionCount the number of connections to pool.
-		 * @throws ClassNotFoundException if the driver could not be found.
-		 * @throws SQLException if a connection cannot be established.
-		 * @throws SQLTimeoutException if at least one of the connections cannot be established due to connection timeout.
-		 */
-		private Pool(String driverClassname, String jdbcURL, Properties info, String userName, String password, int connectionCount) throws ClassNotFoundException, SQLException
-		{
-			// initialize the driver.
-			Class.forName(driverClassname);
-
-			this.jdbcURL = jdbcURL;
-			this.info = info;
-			this.userName = userName;
-			this.password = password;
-			
+			this.connector = connector;
 			this.availableConnections = new LinkedList<PoolConnection>();
 			this.usedConnections = new HashSet<PoolConnection>();
 			for (int i = 0; i < connectionCount; i++)
-				availableConnections.add(createConnection());
+				availableConnections.add(connector.getConnection());
 		}
 		
-		private PoolConnection createConnection() throws SQLException
-		{
-			if (userName != null)
-				return new PoolConnection(DriverManager.getConnection(jdbcURL, userName, password));
-			else if (info != null)
-				return new PoolConnection(DriverManager.getConnection(jdbcURL, info));
-			else
-				return new PoolConnection(DriverManager.getConnection(jdbcURL));
-		}
-
 		/**
 		 * Retrieves a connection from this pool, passes it to the provided {@link ConnectionConsumer} function,
 		 * then releases it to the pool after it finishes.
@@ -1209,7 +1321,7 @@ public final class SQLUtils
 				PoolConnection out;
 				if ((out = availableConnections.poll()).isClosed())
 				{
-					out = createConnection();
+					out = connector.getConnection();
 				}
 				
 				usedConnections.add(out);

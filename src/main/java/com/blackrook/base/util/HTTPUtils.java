@@ -2512,7 +2512,7 @@ public final class HTTPUtils
 		
 		/**
 		 * Convenience function for transferring the entirety of the content 
-		 * stream to another, monitoring the progress as it goes.
+		 * stream to another.
 		 * @param out the output stream.
 		 * @param cancelSwitch the cancel switch for cancelling the transfer. Set to true to stop.
 		 * @return the amount of bytes moved.
@@ -2539,7 +2539,7 @@ public final class HTTPUtils
 		
 		/**
 		 * Convenience function for transferring the entirety of the content 
-		 * stream to another, monitoring the progress as it goes.
+		 * stream to another.
 		 * @param out the output stream.
 		 * @param bufferSize the buffer size for the transfer.
 		 * @return the amount of bytes moved.
@@ -2552,7 +2552,7 @@ public final class HTTPUtils
 
 		/**
 		 * Convenience function for transferring the entirety of the content 
-		 * stream to another, monitoring the progress as it goes.
+		 * stream to another.
 		 * @param out the output stream.
 		 * @param bufferSize the buffer size for the transfer.
 		 * @param cancelSwitch the cancel switch for cancelling the transfer. Set to true to stop.

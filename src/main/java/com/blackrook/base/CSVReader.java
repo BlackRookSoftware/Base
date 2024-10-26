@@ -14,8 +14,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -110,7 +110,7 @@ public class CSVReader implements AutoCloseable, Iterable<List<String>>
 		final int STATE_IN_QUOTED_MAYBE_END = 2;
 		int state = STATE_READ;
 		
-		List<String> out = new LinkedList<>();
+		List<String> out = new ArrayList<>(24);
 		StringBuilder tokenBuf = new StringBuilder(256);
 		
 		for (int i = 0; i < line.length(); i++)

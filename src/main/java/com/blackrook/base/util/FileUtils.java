@@ -46,11 +46,9 @@ public final class FileUtils
 
 	static
 	{
-		final Comparator<File> fileNameComparator = (a, b) -> (
-			System.getProperty("os.name").contains("Windows")
-				? String.CASE_INSENSITIVE_ORDER.compare(a.getPath(), b.getPath())
-			    : a.getPath().compareTo(b.getPath())
-		);
+		final Comparator<File> fileNameComparator = System.getProperty("os.name").contains("Windows") 
+				? (a, b) -> String.CASE_INSENSITIVE_ORDER.compare(a.getPath(), b.getPath())
+			    : (a, b) -> a.getPath().compareTo(b.getPath());
 		
 		FILELIST_COMPARATOR = (a, b) -> (
 			a.isDirectory() 

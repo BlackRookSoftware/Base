@@ -633,10 +633,9 @@ public final class ReflectUtils
 			String[] paths = (String[])field.get(null);
 			for (int i = 0; i < paths.length; i++)
 			{
-				if (libPath.equals(paths[i])) {
+				if (libPath.equals(paths[i]))
 					return;
 			}
-		}
 			String[] tmp = new String[paths.length+1];
 			System.arraycopy(paths,0,tmp,0,paths.length);
 			tmp[paths.length] = libPath;

@@ -421,6 +421,21 @@ public final class EncodingUtils
 	}
 	
 	/**
+	 * Gets a GZipped series of bytes from input and written to an output stream.
+	 * The input stream is read to the end, and is not closed after read.
+	 * @param in the input stream.
+	 * @param out the output stream.
+	 * @throws IOException if a read error occurs.
+	 */
+	public static void gzipBytes(InputStream in, OutputStream out) throws IOException
+	{
+		try (GZIPOutputStream gzout = new GZIPOutputStream(out))
+		{
+			relay(in, gzout, 2048);
+		}
+	}
+
+	/**
 	 * Gets a GZipped series of bytes from input.
 	 * The input stream is read to the end, and is not closed after read.
 	 * @param in the input stream.
@@ -430,10 +445,7 @@ public final class EncodingUtils
 	public static byte[] gzipBytes(InputStream in) throws IOException
 	{
 		ByteArrayOutputStream bos = new ByteArrayOutputStream(2048);
-		try (GZIPOutputStream gzout = new GZIPOutputStream(bos))
-		{
-			relay(in, gzout, 2048);
-		}
+		gzipBytes(in, bos);
 		return bos.toByteArray();
 	}
 	
@@ -465,6 +477,21 @@ public final class EncodingUtils
 	}
 	
 	/**
+	 * Unzips a series of bytes from input assumed to be GZipped, writing the unzipped contents to an output stream.
+	 * The input stream is read to the end, and is not closed after read.
+	 * @param in the input stream.
+	 * @param out the output stream.
+	 * @throws IOException if a read error occurs.
+	 */
+	public static void gunzipBytes(InputStream in, OutputStream out) throws IOException
+	{
+		try (GZIPInputStream gzin = new GZIPInputStream(in))
+		{
+			relay(gzin, out, 2048);
+		}
+	}
+	
+	/**
 	 * Unzips a series of bytes from input assumed to be GZipped.
 	 * The input stream is read to the end, and is not closed after read.
 	 * @param in the input stream.
@@ -474,10 +501,7 @@ public final class EncodingUtils
 	public static byte[] gunzipBytes(InputStream in) throws IOException
 	{
 		ByteArrayOutputStream bos = new ByteArrayOutputStream(2048);
-		try (GZIPInputStream gzin = new GZIPInputStream(in))
-		{
-			relay(gzin, bos, 2048);
-		}
+		gunzipBytes(in, bos);
 		return bos.toByteArray();
 	}
 	

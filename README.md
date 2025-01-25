@@ -1,6 +1,6 @@
 # Black Rook Base
 
-Copyright (c) 2019-2020 Black Rook Software.  
+Copyright (c) 2019-2025 Black Rook Software.  
 [https://github.com/BlackRookSoftware/Base](https://github.com/BlackRookSoftware/Base)
 
 ### Required Libraries

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2020-2023 Matt Tropiano
+ * Copyright (c) 2020-2025 Matt Tropiano
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -2292,6 +2292,17 @@ public class Lexer
 			return false;
 		}
 
+		/**
+		 * Attempts to match the type of the current token. If matched, this returns true.
+		 * This DOES NOT ADVANCE to the next token.
+		 * @param tokenType the token type.
+		 * @return true if matched, false if not.
+		 */
+		protected boolean currentType(int tokenType)
+		{
+			return currentToken.getType() == tokenType;
+		}
+		
 		/**
 		 * Attempts to match the type of the current token. If matched, this returns true.
 		 * This DOES NOT ADVANCE to the next token.

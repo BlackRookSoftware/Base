@@ -2300,7 +2300,11 @@ public class Lexer
 		 */
 		protected boolean currentType(int tokenType)
 		{
-			return currentToken.getType() == tokenType;
+			if (currentToken != null)
+			{
+				return currentToken.getType() == tokenType;
+			}
+			return false;
 		}
 		
 		/**
@@ -2312,7 +2316,11 @@ public class Lexer
 		 */
 		protected boolean currentType(int tokenType1, int tokenType2)
 		{
-			return currentToken.getType() == tokenType1 || currentToken.getType() == tokenType2;
+			if (currentToken != null)
+			{
+				return currentToken.getType() == tokenType1 || currentToken.getType() == tokenType2;
+			}
+			return false;
 		}
 		
 		/**
@@ -2325,7 +2333,11 @@ public class Lexer
 		 */
 		protected boolean currentType(int tokenType1, int tokenType2, int tokenType3)
 		{
-			return currentToken.getType() == tokenType1 || currentToken.getType() == tokenType2 || currentToken.getType() == tokenType3;
+			if (currentToken != null)
+			{
+				return currentToken.getType() == tokenType1 || currentToken.getType() == tokenType2 || currentToken.getType() == tokenType3;
+			}
+			return false;
 		}
 		
 		/**

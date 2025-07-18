@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Black Rook Software
+ * Copyright (c) 2020-2025 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -46,9 +46,10 @@ public final class FileUtils
 
 	static
 	{
-		final Comparator<File> fileNameComparator = System.getProperty("os.name").contains("Windows") 
+		final Comparator<File> fileNameComparator = System.getProperty("os.name").contains("Windows")
 				? (a, b) -> String.CASE_INSENSITIVE_ORDER.compare(a.getPath(), b.getPath())
-			    : (a, b) -> a.getPath().compareTo(b.getPath());
+			    : (a, b) -> a.getPath().compareTo(b.getPath())
+		;
 		
 		FILELIST_COMPARATOR = (a, b) -> (
 			a.isDirectory() 
@@ -970,6 +971,26 @@ public final class FileUtils
 	}
 	
 	/**
+	 * Gets a file comparator that sorts files by name, lexicographically.
+	 * Name sort is case-insensitive on operating systems with case-insensitive filesystems. 
+	 * @return the comparator.
+	 */
+	public static Comparator<File> getFileComparator()
+	{
+		return FILE_COMPARATOR;
+	}
+
+	/**
+	 * Gets a file comparator that sorts directories before files, lexicographically.
+	 * Name sort is case-insensitive on operating systems with case-insensitive filesystems. 
+	 * @return the comparator.
+	 */
+	public static Comparator<File> getFileListComparator()
+	{
+		return FILELIST_COMPARATOR;
+	}
+	
+	/**
 	 * Attempts to rename a file, waiting to do so since the file's handle may not be relinquished.
 	 * Guaranteed to at least wait the amount of the timeout in milliseconds.
 	 * @param oldName the file name.
@@ -994,23 +1015,22 @@ public final class FileUtils
 	}
 
 	/**
-	 * Gets a file comparator that sorts files by name, lexicographically.
-	 * Name sort is case-insensitive on operating systems with case-insensitive filesystems. 
-	 * @return the comparator.
+	 * Attempts to match a file's magic number (initial bytes).
+	 * @param f the file to test.
+	 * @param magicNumber the magic number bytes to test for.
+	 * @return true if matched, false if not.
+	 * @throws IOException if a read error occurs.
 	 */
-	public static Comparator<File> getFileComparator()
+	public static boolean matchMagicNumber(File f, byte[] magicNumber) throws IOException
 	{
-		return FILE_COMPARATOR;
-	}
-
-	/**
-	 * Gets a file comparator that sorts directories before files, lexicographically.
-	 * Name sort is case-insensitive on operating systems with case-insensitive filesystems. 
-	 * @return the comparator.
-	 */
-	public static Comparator<File> getFileListComparator()
-	{
-		return FILELIST_COMPARATOR;
+		try (RandomAccessFile raf = new RandomAccessFile(f, "r"))
+		{
+			byte[] buf = new byte[magicNumber.length];
+			int len = raf.read(buf);
+			if (len != magicNumber.length)
+				return false;
+			return Arrays.equals(magicNumber, buf);
+		}
 	}
 	
 	/**

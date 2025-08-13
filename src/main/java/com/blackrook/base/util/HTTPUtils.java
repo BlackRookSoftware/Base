@@ -2948,7 +2948,7 @@ public final class HTTPUtils
 				out.redirectedURLs = new LinkedList<>();
 			String urlString = out.url.toString();
 			if (out.redirectedURLs.contains(urlString))
-				throw new IllegalStateException("Redirect loop detected - " + out.url + " wad already visited.");
+				throw new IllegalStateException("Redirect loop detected - " + out.url + " was already visited.");
 			out.redirectedURLs.add(urlString);
 
 			try {

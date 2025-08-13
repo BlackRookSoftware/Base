@@ -59,6 +59,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.zip.DeflaterInputStream;
+import java.util.zip.GZIPInputStream;
 
 /**
  * HTTP Utilities.
@@ -711,7 +713,7 @@ public final class HTTPUtils
 		
 		/**
 		 * An HTTP Reader that reads byte content and puts it in a temporary file.
-		 * Gets the string contents of the response, decoded using the response's charset.
+		 * Gets the string contents of the response, decoded using the response's charset encoding.
 		 * <p> If the read is cancelled, the file is closed and deleted, and this returns null.
 		 * @return the reader for reading the content into a file.
 		 */
@@ -2289,6 +2291,28 @@ public final class HTTPUtils
 		}
 		
 		/**
+		 * Wraps an input stream such that the result decodes a GZIP stream.
+		 * @param inputStream the source input stream.
+		 * @return the GZIP-reading input stream.
+		 * @throws IOException if the source stream is not GZIP-encoded.
+		 */
+		public static InputStream wrapGZIPStream(InputStream inputStream) throws IOException
+		{
+			return new GZIPInputStream(inputStream);
+		}
+		
+		/**
+		 * Wraps an input stream such that the result decodes a ZIP stream.
+		 * @param inputStream the source input stream.
+		 * @return the ZIP-reading input stream.
+		 * @throws IOException if the source stream is not ZIP-encoded.
+		 */
+		public static InputStream wrapDeflateStream(InputStream inputStream) throws IOException
+		{
+			return new DeflaterInputStream(inputStream);
+		}
+		
+		/**
 		 * @return the request used to get the response.
 		 */
 		public HTTPRequest getRequest() 
@@ -2483,6 +2507,34 @@ public final class HTTPUtils
 		{
 			int range = statusCode / 100;
 			return range == 4 || range == 5;
+		}
+
+		/**
+		 * Attempts to decode the content before a read.
+		 * Useful if the stream we are getting back may be GZIP or Deflate-encoded.
+		 * If no encoding is found on the response (Content-Encoding), then this changes nothing.
+		 * @return this response, for chaining.
+		 * @throws IOException if an encoding type was returned that is unsupported (these are established on the request).
+		 */
+		public HTTPResponse decode() throws IOException
+		{
+			String encoding;
+			if ((encoding = getEncoding()) == null || encoding.trim().length() == 0)
+				return this;
+			
+			String[] chain = encoding.split("[,\\s]+");
+			
+			for (String e : chain)
+			{
+				if ("gzip".equalsIgnoreCase(e))
+					contentStream = wrapGZIPStream(contentStream);
+				else if ("deflate".equalsIgnoreCase(e))
+					contentStream = wrapDeflateStream(contentStream);
+				else
+					throw new IOException("Unsupported encoding: " + e);
+			}
+			
+			return this;
 		}
 
 		/**

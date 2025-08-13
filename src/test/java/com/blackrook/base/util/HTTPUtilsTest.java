@@ -30,7 +30,7 @@ public final class HTTPUtilsTest
 		HTTPResponse response = cookiesSetNameValue("a", "farts").send();
 		System.out.println(response.getRedirectHistory());
 		System.out.println(response.getStatusCode() + ": " + response.getStatusMessage());
-		System.out.println(response.read(HTTPReader.createLineConsumer(System.out::println)));
+		System.out.println(response.decode().read(HTTPReader.createLineConsumer(System.out::println)));
 	}
 	
 	/* ==================================================================== */

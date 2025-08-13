@@ -3268,7 +3268,7 @@ public final class HTTPUtils
 		{
 			try (HTTPResponse response = send(cancelSwitch))
 			{
-				return response != null ? response.read(reader, cancelSwitch != null ? cancelSwitch : new AtomicBoolean(false)) : null;
+				return response != null ? response.decode().read(reader, cancelSwitch != null ? cancelSwitch : new AtomicBoolean(false)) : null;
 			}
 		}
 

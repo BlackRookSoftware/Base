@@ -33,7 +33,7 @@ public final class HTTPUtilsTest2
 			.send();
 		System.out.println(response.getRedirectHistory());
 		System.out.println(response.getStatusCode() + ": " + response.getStatusMessage());
-		System.out.println(response.decode().read(HTTPReader.createLineConsumer(System.out::println)));
+		System.out.println(response.read(HTTPReader.createLineConsumer(System.out::println)));
 	}
 
 }

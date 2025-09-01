@@ -7,6 +7,7 @@ package com.blackrook.base.util;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -704,7 +705,7 @@ public final class ReflectUtils
 	 */
 	public static String[] getClasses(String prefix)
 	{
-		return ArrayUtils.joinArrays(getClasses(prefix, Thread.currentThread().getContextClassLoader()), getClassesFromClasspath(prefix));
+		return joinArrays(getClasses(prefix, Thread.currentThread().getContextClassLoader()), getClassesFromClasspath(prefix));
 	}
 	
 	/**
@@ -773,6 +774,93 @@ public final class ReflectUtils
 		return out;
 	}
 
+	/**
+	 * Concatenates a set of arrays together, such that the contents of each
+	 * array are joined into one array. Null arrays are skipped.
+	 * @param <T> the object type stored in the arrays.
+	 * @param arrays the list of arrays.
+	 * @return a new array with all objects in each provided array added 
+	 * to the resultant one in the order in which they appear.
+	 */
+	@SafeVarargs
+	@SuppressWarnings("unchecked")
+	private static <T> T[] joinArrays(T[] ...  arrays)
+	{
+		int totalLen = 0;
+		for (T[] a : arrays)
+			if (a != null)
+				totalLen += a.length;
+		
+		Class<?> type = getArrayType(arrays);
+		T[] out = (T[])Array.newInstance(type, totalLen);
+		
+		int offs = 0;
+		for (T[] a : arrays)
+		{
+			System.arraycopy(a, 0, out, offs, a.length);
+			offs += a.length;
+		}
+		
+		return out;
+	}
+
+	/**
+	 * Decodes a URL-encoded string.
+	 * @param inString the input string.
+	 * @return the unescaped string.
+	 */
+	private static String urlUnescape(String inString)
+	{
+		StringBuilder sb = new StringBuilder();
+		char[] chars = new char[2];
+		int x = 0;
+		
+		final int STATE_START = 0;
+		final int STATE_DECODE = 1;
+		int state = STATE_START;
+		
+		for (int i = 0; i < inString.length(); i++)
+		{
+			char c = inString.charAt(i);
+			
+			switch (state)
+			{
+				case STATE_START:
+					if (c == '%')
+					{
+						x = 0;
+						state = STATE_DECODE;
+					}
+					else
+						sb.append(c);
+					break;
+				case STATE_DECODE:
+					chars[x++] = c;
+					if (x == 2)
+					{
+						int v = 0;
+						try {
+							v = Integer.parseInt(new String(chars), 16);
+							sb.append((char)(v & 0x0ff));
+					} catch (NumberFormatException e) {
+							sb.append('%').append(chars[0]).append(chars[1]);
+						}
+						state = STATE_START;
+					}
+					break;
+			}
+		}
+		
+		if (state == STATE_DECODE)
+		{
+			sb.append('%');
+			for (int n = 0; n < x; n++)
+				sb.append(chars[n]);
+		}
+		
+		return sb.toString();
+	}
+
 	// Scans a URL classloader.
 	private static void scanURLClassLoader(String prefix, URLClassLoader classLoader, List<String> outList)
 	{
@@ -780,7 +868,7 @@ public final class ReflectUtils
 		{
 			if (url.getProtocol().equals("file"))
 			{
-				String startingPath = StringUtils.urlUnescape(url.getPath().substring(1));
+				String startingPath = urlUnescape(url.getPath().substring(1));
 				File file = new File(startingPath);
 				if (file.isDirectory())
 					scanDirectory(prefix, outList, startingPath, file);

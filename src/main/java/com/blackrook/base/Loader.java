@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Black Rook Software
+ * Copyright (c) 2020-2025 Matt Tropiano
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -95,11 +95,12 @@ public class Loader<T>
 	{
 		/**
 		 * Loads an object using a name.
+		 * @param path the path requested.
 		 * @param in the input stream to use for loading an object.
 		 * @return a loaded object or null if not loaded.
 		 * @throws Exception if an exception occurs.
 		 */
-		T load(InputStream in) throws Exception;
+		T load(String path, InputStream in) throws Exception;
 	}
 	
 	/**
@@ -217,7 +218,7 @@ public class Loader<T>
 				in = loader.getResourceAsStream(prefix + path);
 				if (in == null)
 					return null;
-				return streamLoader.load(in);
+				return streamLoader.load(path, in);
 			} finally {
 				if (in != null) in.close();
 			}
@@ -720,12 +721,12 @@ public class Loader<T>
 			}
 		}
 
-	    /**
-	     * Convenience method for: <code>cancel(false)</code>.
-	     * @return {@code false} if the task could not be cancelled,
-	     * typically because it has already completed normally;
-	     * {@code true} otherwise
-	     */
+		/**
+		 * Convenience method for: <code>cancel(false)</code>.
+		 * @return {@code false} if the task could not be cancelled,
+		 * typically because it has already completed normally;
+		 * {@code true} otherwise
+		 */
 		public final boolean cancel()
 		{
 			return cancel(false);

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Black Rook Software
+ * Copyright (c) 2019-2025 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -228,12 +228,61 @@ public final class ObjectUtils
 	@SafeVarargs
 	public static <V> SortedMap<String, V> createCaseInsensitiveSortedMap(Map.Entry<String, V> ... entries)
 	{
-		SortedMap<String, V> out = new TreeMap<>();
+		SortedMap<String, V> out = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 		for (Map.Entry<String, V> e : entries)
 			out.put(e.getKey(), e.getValue());
 		return Collections.unmodifiableSortedMap(out);
 	}
 
+	/**
+	 * Creates a new immutable map such that the mapping of key-to-value 
+	 * is now value-to-key. Beware that some data may be lost if the values are not unique.
+	 * @param <K> the key type of the originating map.
+	 * @param <V> the value type of the originating map.
+	 * @param input the input map.
+	 * @return the new resultant, unmodifiable map.
+	 */
+	public static <K, V> Map<V, K> reverseMap(Map<K, V> input)
+	{
+		Map<V, K> out = new HashMap<>(input.size());
+		for (Map.Entry<K, V> entry : input.entrySet())
+			out.put(entry.getValue(), entry.getKey());
+		return Collections.unmodifiableMap(out);
+	}
+	
+	/**
+	 * Creates a new immutable map such that the mapping of key-to-value 
+	 * is now value-to-key, assuming that values are sort-able. 
+	 * Beware that some data may be lost if the values are not unique.
+	 * @param <K> the key type of the originating map.
+	 * @param <V> the value type of the originating map.
+	 * @param input the input map.
+	 * @return the new resultant, unmodifiable map.
+	 */
+	public static <K, V extends Comparable<V>> SortedMap<V, K> reverseSortedMap(Map<K, V> input)
+	{
+		SortedMap<V, K> out = new TreeMap<>();
+		for (Map.Entry<K, V> entry : input.entrySet())
+			out.put(entry.getValue(), entry.getKey());
+		return Collections.unmodifiableSortedMap(out);
+	}
+	
+	/**
+	 * Creates a new immutable map such that the mapping of key-to-value 
+	 * is now value-to-key, assuming that values are Strings to be sorted case-insensitively. 
+	 * Beware that some data may be lost if the values are not unique.
+	 * @param <K> the key type of the originating map.
+	 * @param input the input map.
+	 * @return the new resultant, unmodifiable map.
+	 */
+	public static <K> SortedMap<String, K> reverseCaseInsensitiveSortedMap(Map<K, String> input)
+	{
+		SortedMap<String, K> out = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+		for (Map.Entry<K, String> entry : input.entrySet())
+			out.put(entry.getValue(), entry.getKey());
+		return Collections.unmodifiableSortedMap(out);
+	}
+	
 	/**
 	 * Creates a new immutable list.
 	 * The underlying map is an {@link ArrayList}.

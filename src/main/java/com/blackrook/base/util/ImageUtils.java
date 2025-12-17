@@ -65,8 +65,8 @@ public final class ImageUtils
 	public static BufferedImage copy(BufferedImage source)
 	{
 		ColorModel cm = source.getColorModel();
-	    boolean isAlphaPremultiplied = cm.isAlphaPremultiplied();
-	    WritableRaster raster = source.copyData(source.getRaster().createCompatibleWritableRaster());
+		boolean isAlphaPremultiplied = cm.isAlphaPremultiplied();
+		WritableRaster raster = source.copyData(source.getRaster().createCompatibleWritableRaster());
 		return new BufferedImage(cm, raster, isAlphaPremultiplied, null);
 	}
 	
@@ -798,11 +798,11 @@ public final class ImageUtils
 		 */
 		protected static void checkRaster(ColorModel colorModel, Raster raster) 
 		{
-	        if (!colorModel.isCompatibleRaster(raster))
-	            throw new UnsupportedOperationException("ColorModel is not compatible with raster.");
-	        if (raster.getSampleModel().getDataType() != DataBuffer.TYPE_INT)
-	            throw new UnsupportedOperationException("Expected integer data type from raster.");
-	    }
+			if (!colorModel.isCompatibleRaster(raster))
+				throw new UnsupportedOperationException("ColorModel is not compatible with raster.");
+			if (raster.getSampleModel().getDataType() != DataBuffer.TYPE_INT)
+				throw new UnsupportedOperationException("Expected integer data type from raster.");
+		}
 		
 		/**
 		 * Mixes two pixels together.

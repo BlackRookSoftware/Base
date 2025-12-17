@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Black Rook Software
+ * Copyright (c) 2020-2025 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Queue;
 import java.util.Random;
 
-
 /**
  * Simple utility functions around files.
  * @author Matthew Tropiano
@@ -41,16 +40,15 @@ public final class FileUtils
 
 	private static final File TEMP_DIR = new File(System.getProperty("java.io.tmpdir"));
 	
-    private static final Comparator<File> FILELIST_COMPARATOR;
+	private static final Comparator<File> FILELIST_COMPARATOR;
 	private static final Comparator<File> FILE_COMPARATOR;
 
 	static
 	{
-		final Comparator<File> fileNameComparator = (a, b) -> (
-			System.getProperty("os.name").contains("Windows")
-				? String.CASE_INSENSITIVE_ORDER.compare(a.getPath(), b.getPath())
-			    : a.getPath().compareTo(b.getPath())
-		);
+		final Comparator<File> fileNameComparator = System.getProperty("os.name").contains("Windows")
+				? (a, b) -> String.CASE_INSENSITIVE_ORDER.compare(a.getPath(), b.getPath())
+				: (a, b) -> a.getPath().compareTo(b.getPath())
+		;
 		
 		FILELIST_COMPARATOR = (a, b) -> (
 			a.isDirectory() 
@@ -830,6 +828,55 @@ public final class FileUtils
 	}
 
 	/**
+	 * Scans a directory for a file recursively until it finds the desired file (by name).
+	 * @param dir the directory to search.
+	 * @param name the name of the file.
+	 * @param noExt if true, do not use the file's extension, just name.
+	 * @param caseSensitive if true, search case-insensitively.
+	 * @return the found file, or null if not found.
+	 */
+	public static File searchDirectory(File dir, String name, boolean noExt, boolean caseSensitive)
+	{
+		for (File file : dir.listFiles())
+		{
+			if (file.isDirectory())
+			{
+				File found;
+				if ((found = searchDirectory(file, name, noExt, caseSensitive)) != null)
+					return found;
+			}
+			else
+			{
+				if (noExt)
+				{
+					String filename = FileUtils.getFileNameWithoutExtension(file);
+					if (caseSensitive && filename.equals(name))
+					{
+						return file;
+					}
+					else if (!caseSensitive && filename.equalsIgnoreCase(name))
+					{
+						return file;
+					}
+				}
+				else
+				{
+					String filename = file.getName();
+					if (caseSensitive && filename.equals(name))
+					{
+						return file;
+					}
+					else if (!caseSensitive && filename.equalsIgnoreCase(name))
+					{
+						return file;
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * Deletes all files under a directory.
 	 * If the provided file is not a directory, it is still deleted.
 	 * This does not search recursively for more files.
@@ -972,6 +1019,26 @@ public final class FileUtils
 	}
 	
 	/**
+	 * Gets a file comparator that sorts files by name, lexicographically.
+	 * Name sort is case-insensitive on operating systems with case-insensitive filesystems. 
+	 * @return the comparator.
+	 */
+	public static Comparator<File> getFileComparator()
+	{
+		return FILE_COMPARATOR;
+	}
+
+	/**
+	 * Gets a file comparator that sorts directories before files, lexicographically.
+	 * Name sort is case-insensitive on operating systems with case-insensitive filesystems. 
+	 * @return the comparator.
+	 */
+	public static Comparator<File> getFileListComparator()
+	{
+		return FILELIST_COMPARATOR;
+	}
+	
+	/**
 	 * Attempts to rename a file, waiting to do so since the file's handle may not be relinquished.
 	 * Guaranteed to at least wait the amount of the timeout in milliseconds.
 	 * @param oldName the file name.
@@ -996,23 +1063,22 @@ public final class FileUtils
 	}
 
 	/**
-	 * Gets a file comparator that sorts files by name, lexicographically.
-	 * Name sort is case-insensitive on operating systems with case-insensitive filesystems. 
-	 * @return the comparator.
+	 * Attempts to match a file's magic number (initial bytes).
+	 * @param f the file to test.
+	 * @param magicNumber the magic number bytes to test for.
+	 * @return true if matched, false if not.
+	 * @throws IOException if a read error occurs.
 	 */
-	public static Comparator<File> getFileComparator()
+	public static boolean matchMagicNumber(File f, byte[] magicNumber) throws IOException
 	{
-		return FILE_COMPARATOR;
-	}
-
-	/**
-	 * Gets a file comparator that sorts directories before files, lexicographically.
-	 * Name sort is case-insensitive on operating systems with case-insensitive filesystems. 
-	 * @return the comparator.
-	 */
-	public static Comparator<File> getFileListComparator()
-	{
-		return FILELIST_COMPARATOR;
+		try (RandomAccessFile raf = new RandomAccessFile(f, "r"))
+		{
+			byte[] buf = new byte[magicNumber.length];
+			int len = raf.read(buf);
+			if (len != magicNumber.length)
+				return false;
+			return Arrays.equals(magicNumber, buf);
+		}
 	}
 	
 	/**

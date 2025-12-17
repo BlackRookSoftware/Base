@@ -1,10 +1,11 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Black Rook Software
+ * Copyright (c) 2019-2024 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
 package com.blackrook.base.util;
 
+import java.lang.reflect.Array;
 import java.util.Random;
 
 /**
@@ -292,6 +293,44 @@ public final class RandomUtils
 		for (int i = 0; i < n; i++)
 			total += roll(rand,die);
 		return total;
+	}
+	
+	/**
+	 * Shuffles an array of elements in-place, 
+	 * such that the order of the array's contents are now randomized.
+	 * @param <T> the array element type.
+	 * @param rand the random number generator.
+	 * @param elements the array of elements.
+	 */
+	public static <T> void shuffle(Random rand, T[] elements)
+	{
+		for (int i = elements.length - 1; i > 0; i--)
+		{
+			int src = rand.nextInt(i);
+			T temp = elements[i];
+			elements[i] = elements[src];
+			elements[src] = temp;
+		}
+	}
+	
+	/**
+	 * Copies an array's contents, and then shuffles that new array of elements in-place, 
+	 * such that the order of the array's contents are now randomized.
+	 * @param <T> the array element type.
+	 * @param rand the random number generator.
+	 * @param elementsSource the source array of elements. 
+	 * @return a copy of the source array with its contents shuffled. 
+	 */
+	public static <T> T[] shuffleCopy(Random rand, T[] elementsSource)
+	{
+		if (elementsSource.length == 0)
+			return elementsSource;
+		
+		@SuppressWarnings("unchecked")
+		T[] out = (T[])Array.newInstance(elementsSource[0].getClass(), elementsSource.length);
+		System.arraycopy(elementsSource, 0, out, 0, elementsSource.length);
+		shuffle(rand, out);
+		return out;
 	}
 	
 }

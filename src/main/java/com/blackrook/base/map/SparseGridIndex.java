@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Black Rook Software
+ * Copyright (c) 2019-2025 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -59,13 +59,26 @@ public class SparseGridIndex<T> implements Iterable<Map.Entry<SparseGridIndex.Pa
 	 * Gets the object at a particular part of the grid.
 	 * @param x	the grid position x to get info.
 	 * @param y	the grid position y to get info.
-	 * @return the object at that set of coordinates or null if not object.
+	 * @return the object at that set of coordinates or null if no object.
 	 */
 	public T get(int x, int y)
 	{
 		Pair cp = CACHE_PAIR.get();
 		cp.set(x, y);
 		return data.get(cp);
+	}
+	
+	/**
+	 * Removes the object at a particular part of the grid.
+	 * @param x	the grid position x.
+	 * @param y	the grid position y.
+	 * @return the object removed at that set of coordinates or null if no object.
+	 */
+	public T remove(int x, int y)
+	{
+		Pair cp = CACHE_PAIR.get();
+		cp.set(x, y);
+		return data.remove(cp);
 	}
 	
 	@Override

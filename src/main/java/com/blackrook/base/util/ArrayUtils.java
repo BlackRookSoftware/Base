@@ -146,6 +146,24 @@ public final class ArrayUtils
 		}
 		return -1;
 	}
+	
+	/**
+	 * Returns a new array such that the contents of the old array are copied to a
+	 * new array of a particular length. If the new length is less than the old array,
+	 * the array returned is a truncation of the old array.
+	 * @param <T> the array type.
+	 * @param oldArray the old array.
+	 * @param newLength the length of the new array in elements.
+	 * @return the new array.
+	 */
+	public static <T> T[] resizeArray(T[] oldArray, int newLength)
+	{
+		Class<?> type = getArrayType(oldArray);
+		@SuppressWarnings("unchecked")
+		T[] out = (T[])Array.newInstance(type, newLength);
+		System.arraycopy(oldArray, 0, out, 0, Math.min(oldArray.length, newLength));
+		return out;
+	}
 
 	/**
 	 * Returns a new (safe) array reference that contains all of the passed-in elements in order.

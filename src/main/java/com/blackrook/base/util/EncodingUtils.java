@@ -394,7 +394,7 @@ public final class EncodingUtils
 	}
 	
 	/**
-	 * Gets a GZipped series of bytes from input.
+	 * Gets a series of bytes from input and returns them as a set of GZipped bytes..
 	 * @param data the bytes to read.
 	 * @return the resultant GZipped bytes.
 	 * @throws IOException if a read error occurs.
@@ -405,7 +405,7 @@ public final class EncodingUtils
 	}
 	
 	/**
-	 * Gets a GZipped series of bytes from input.
+	 * Gets a series of bytes from input and returns them as a set of GZipped bytes..
 	 * @param data the bytes to read.
 	 * @param offset the offset into the array to start read.
 	 * @param length the maximum amount of bytes to read.
@@ -421,7 +421,7 @@ public final class EncodingUtils
 	}
 	
 	/**
-	 * Gets a GZipped series of bytes from input and written to an output stream.
+	 * Gets a series of bytes from input and writes GZipped bytes to an output stream.
 	 * The input stream is read to the end, and is not closed after read.
 	 * @param in the input stream.
 	 * @param out the output stream.
@@ -436,7 +436,7 @@ public final class EncodingUtils
 	}
 
 	/**
-	 * Gets a GZipped series of bytes from input.
+	 * Gets a series of bytes from input and returns them as a set of GZipped bytes..
 	 * The input stream is read to the end, and is not closed after read.
 	 * @param in the input stream.
 	 * @return the resultant GZipped bytes.

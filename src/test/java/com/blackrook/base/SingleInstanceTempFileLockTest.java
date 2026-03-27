@@ -2,11 +2,11 @@ package com.blackrook.base;
 
 import java.io.IOException;
 
-public final class SingleInstanceLockTest 
+public final class SingleInstanceTempFileLockTest 
 {
 	public static void main(String[] args) throws IOException
 	{
-		try (SingleInstanceLock lock = new SingleInstanceLock("fartslol"))
+		try (SingleInstanceTempFileLock lock = new SingleInstanceTempFileLock("fartslol"))
 		{
 			System.out.println();
 		} 

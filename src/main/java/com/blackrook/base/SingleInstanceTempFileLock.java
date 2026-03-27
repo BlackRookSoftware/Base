@@ -15,7 +15,7 @@ import java.nio.file.StandardOpenOption;
  * A file-based, single instance locking mechanism for programs or other functions.
  * @author Matthew Tropiano
  */
-public class SingleInstanceLock implements AutoCloseable
+public class SingleInstanceTempFileLock implements AutoCloseable
 {
 	private static final File TEMP_DIR = new File(System.getProperty("java.io.tmpdir"));
 
@@ -41,7 +41,7 @@ public class SingleInstanceLock implements AutoCloseable
 	 * @param fileName the name of the file to attempt a lock on.
 	 * @throws IOException if the lock could not be acquired.
 	 */
-	public SingleInstanceLock(String fileName) throws IOException
+	public SingleInstanceTempFileLock(String fileName) throws IOException
 	{
 		lockFile = new File(TEMP_DIR.getAbsolutePath() + File.separator + fileName + ".lock");
 		lockChannel = FileChannel.open(lockFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);

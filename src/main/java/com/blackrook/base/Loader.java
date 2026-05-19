@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2020-2025 Matt Tropiano
+ * Copyright (c) 2020-2026 Matt Tropiano
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -163,7 +163,7 @@ public class Loader<T>
 	 */
 	public static <T> LoaderFunction<T> createFileLoader(final File directory, FileLoaderFunction<T> fileLoader)
 	{
-		if (directory == null || directory.isDirectory())
+		if (directory == null || !directory.isDirectory())
 			throw new IllegalArgumentException("Provided file is not a directory.");
 		
 		return (path) ->

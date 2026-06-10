@@ -290,7 +290,7 @@ public final class StringUtils
 		for (int i = 0; i < strings.length; i++)
 		{
 			sb.append(strings[i]);
-			if (i < strings.length - 1)
+			if (i < strings.length - 1 && separator != null)
 				sb.append(separator);
 		}
 		return sb.toString();

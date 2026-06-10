@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Black Rook Software
+ * Copyright (c) 2019-2026 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -106,6 +106,17 @@ public class SerialWriter
 	}
 
 	/**
+	 * Writes a byte.
+	 * @param out the output stream.
+	 * @param b the value to write, truncated to a byte.
+	 * @throws IOException if an error occurred during the write.
+	 */
+	public void writeByte(OutputStream out, int b) throws IOException
+	{
+		out.write((byte)b);
+	}
+
+	/**
 	 * Writes a short that is less than 256 to a byte.
 	 * @param out the output stream.
 	 * @param s the value to write.
@@ -125,6 +136,18 @@ public class SerialWriter
 	public void writeUnsignedByte(OutputStream out, int b) throws IOException
 	{
 		writeByte(out, (byte)(b & 0x0ff));
+	}
+
+	/**
+	 * Writes an int that is less than 256 to a byte.
+	 * @param out the output stream.
+	 * @param b the values to write, truncated to a byte each.
+	 * @throws IOException if an error occurred during the write.
+	 */
+	public void writeUnsignedBytes(OutputStream out, int ... b) throws IOException
+	{
+		for (int i = 0; i < b.length; i++)
+			writeUnsignedByte(out, b[i]);
 	}
 
 	/**
@@ -174,6 +197,18 @@ public class SerialWriter
 	}
 
 	/**
+	 * Writes a series of unsigned integers.
+	 * @param out the output stream.
+	 * @param l the values to write.
+	 * @throws IOException if an error occurred during the write.
+	 */
+	public void writeUnsignedIntegers(OutputStream out, long ... l) throws IOException
+	{
+		for (int i = 0; i < l.length; i++)
+			writeUnsignedInteger(out, l[i]);
+	}
+
+	/**
 	 * Writes an integer.
 	 * @param out the output stream.
 	 * @param i the value to write.
@@ -184,6 +219,18 @@ public class SerialWriter
 		byte[] buffer = CACHE.get().buffer;
 		intToBytes(i, endianMode, buffer, 0);
 		out.write(buffer, 0, 4);
+	}
+
+	/**
+	 * Writes a series of integers.
+	 * @param out the output stream.
+	 * @param i the values to write.
+	 * @throws IOException if an error occurred during the write.
+	 */
+	public void writeInts(OutputStream out, int ... i) throws IOException
+	{
+		for (int z = 0; z < i.length; z++)
+			writeInt(out, i[z]);
 	}
 
 	/**
@@ -357,6 +404,41 @@ public class SerialWriter
 	}
 
 	/**
+	 * Writes a short.
+	 * @param out the output stream.
+	 * @param s the value to write, truncated to a short.
+	 * @throws IOException if an error occurred during the write.
+	 */
+	public void writeShort(OutputStream out, int s) throws IOException
+	{
+		writeShort(out, (short)s);
+	}
+
+	/**
+	 * Writes a series of shorts.
+	 * @param out the output stream.
+	 * @param s the values to write.
+	 * @throws IOException if an error occurred during the write.
+	 */
+	public void writeShorts(OutputStream out, short ... s) throws IOException
+	{
+		for (int i = 0; i < s.length; i++)
+			writeShort(out, s[i]);
+	}
+
+	/**
+	 * Writes a series of shorts.
+	 * @param out the output stream.
+	 * @param s the values to write, truncated to shorts.
+	 * @throws IOException if an error occurred during the write.
+	 */
+	public void writeShorts(OutputStream out, int ... s) throws IOException
+	{
+		for (int i = 0; i < s.length; i++)
+			writeShort(out, s[i]);
+	}
+
+	/**
 	 * Writes an integer, less than 65536, as a short.
 	 * @param out the output stream.
 	 * @param s the value to write.
@@ -365,6 +447,18 @@ public class SerialWriter
 	public void writeUnsignedShort(OutputStream out, int s) throws IOException
 	{
 		writeShort(out, (short)(s & 0x0ffff));
+	}
+
+	/**
+	 * Writes a series of unsigned shorts.
+	 * @param out the output stream.
+	 * @param s the values to write.
+	 * @throws IOException if an error occurred during the write.
+	 */
+	public void writeUnsignedShorts(OutputStream out, int ... s) throws IOException
+	{
+		for (int i = 0; i < s.length; i++)
+			writeUnsignedShort(out, s[i]);
 	}
 
 	/**

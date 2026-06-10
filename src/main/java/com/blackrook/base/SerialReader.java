@@ -338,6 +338,34 @@ public class SerialReader
 	}
 
 	/**
+	 * Reads a series of bytes, cast to shorts to eliminate sign.
+	 * @param in the input stream to read from.
+	 * @return the decoded value.
+	 * @throws IOException if an error occurred during the read.
+	 */
+	public short[] readUnsignedBytes(InputStream in, int n) throws IOException
+	{
+		short[] out = new short[n];
+		for (int i = 0; i < out.length; i++)
+			out[i] = readUnsignedByte(in);
+		return out;
+	}
+
+	/**
+	 * Reads a series of bytes, cast to ints to eliminate sign.
+	 * @param in the input stream to read from.
+	 * @return the decoded value.
+	 * @throws IOException if an error occurred during the read.
+	 */
+	public int[] readUnsignedBytesAsInts(InputStream in, int n) throws IOException
+	{
+		int[] out = new int[n];
+		for (int i = 0; i < out.length; i++)
+			out[i] = readUnsignedByte(in);
+		return out;
+	}
+
+	/**
 	 * Reads a series of bytes from the bound stream into a byte array until end of 
 	 * stream is reached or the array is filled with bytes.
 	 * @param in the input stream to read from.
@@ -570,7 +598,7 @@ public class SerialReader
 	 * Reads in a specified amount of shorts.
 	 * @param in the input stream to read from.
 	 * @param n the amount of shorts to read.
-	 * @return the decoded value.
+	 * @return the decoded values.
 	 * @throws IOException if an error occurred during the read.
 	 */
 	public short[] readShorts(InputStream in, int n) throws IOException
@@ -578,6 +606,36 @@ public class SerialReader
 		short[] out = new short[n];
 		for (int i = 0; i < out.length; i++)
 			out[i] = readShort(in);
+		return out;
+	}
+
+	/**
+	 * Reads in a specified amount of shorts, cast to ints.
+	 * @param in the input stream to read from.
+	 * @param n the amount of shorts to read.
+	 * @return the decoded values.
+	 * @throws IOException if an error occurred during the read.
+	 */
+	public int[] readShortsAsInts(InputStream in, int n) throws IOException
+	{
+		int[] out = new int[n];
+		for (int i = 0; i < out.length; i++)
+			out[i] = readShort(in);
+		return out;
+	}
+
+	/**
+	 * Reads in a specified amount of unsigned shorts.
+	 * @param in the input stream to read from.
+	 * @param n the amount of shorts to read.
+	 * @return the decoded value.
+	 * @throws IOException if an error occurred during the read.
+	 */
+	public int[] readUnsignedShorts(InputStream in, int n) throws IOException
+	{
+		int[] out = new int[n];
+		for (int i = 0; i < out.length; i++)
+			out[i] = readUnsignedShort(in);
 		return out;
 	}
 

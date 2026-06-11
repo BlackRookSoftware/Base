@@ -340,6 +340,7 @@ public class SerialReader
 	/**
 	 * Reads a series of bytes, cast to shorts to eliminate sign.
 	 * @param in the input stream to read from.
+	 * @param n the amount of bytes to read.
 	 * @return the decoded value.
 	 * @throws IOException if an error occurred during the read.
 	 */
@@ -354,6 +355,7 @@ public class SerialReader
 	/**
 	 * Reads a series of bytes, cast to ints to eliminate sign.
 	 * @param in the input stream to read from.
+	 * @param n the amount of bytes to read.
 	 * @return the decoded value.
 	 * @throws IOException if an error occurred during the read.
 	 */

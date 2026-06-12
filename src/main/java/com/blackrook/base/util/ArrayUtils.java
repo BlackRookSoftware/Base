@@ -1510,4 +1510,24 @@ public final class ArrayUtils
 			destination[s + destinationOffset] = source[s + sourceOffset];
 		return s;
 	}
+	
+	/**
+	 * Gets the "toString()" version of this array, but each item is on a new line.
+	 * @param <T> the array type.
+	 * @param items the array items.
+	 * @return the resultant string.
+	 */
+	@SafeVarargs
+	public static <T> String toStringNewlines(T ... items)
+	{
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < items.length; i++)
+		{
+			if (sb.length() > 0)
+				sb.append(",\n");
+			sb.append(String.valueOf(items[i]));
+		}
+		return sb.toString();
+	}
+	
 }

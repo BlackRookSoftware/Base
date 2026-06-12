@@ -4,7 +4,7 @@ public final class StringTest
 {
 	public static void main(String[] args)
 	{
-		System.out.println(StringUtils.pad(7, 3, '0'));
+		System.out.println(StringUtils.indent("    ", "butt\napple\nbanana\nplum"));
 	}
 
 }

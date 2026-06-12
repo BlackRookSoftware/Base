@@ -370,6 +370,17 @@ public final class StringUtils
 	}
 	
 	/**
+	 * Indents a string (including line separations).
+	 * @param indentation the indentation string.
+	 * @param str the string to indent.
+	 * @return the resulting string.
+	 */
+	public static String indent(String indentation, String str)
+	{
+		return indentation + str.replace("\n", "\n" + indentation);
+	}
+	
+	/**
 	 * Prints a message out to standard out, word-wrapped
 	 * to a set column width (in characters). The width cannot be
 	 * 1 or less or this does nothing. This will also turn any whitespace

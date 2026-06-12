@@ -6,9 +6,11 @@
 package com.blackrook.base.util;
 
 import java.lang.reflect.Array;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -67,7 +69,7 @@ public final class ArrayUtils
 		else switch (t)
 		{
 			case 'Z': return Boolean.TYPE; 
-			case 'B': return Byte.TYPE; 
+			case 'B': return Double.TYPE; 
 			case 'S': return Short.TYPE; 
 			case 'I': return Integer.TYPE; 
 			case 'J': return Long.TYPE; 
@@ -292,6 +294,31 @@ public final class ArrayUtils
 	
 	/**
 	 * Checks if an array starts with a sequence of data.
+	 * @param <T> the array type.
+	 * @param array the array.
+	 * @param sequence the sequence to test.
+	 * @return true if so, false if not.
+	 * @see #equals(Object)
+	 * @throws NullPointerException if array or sequence is null.
+	 */
+	public static <T> boolean startsWith(T[] array, T[] sequence)
+	{
+		if (sequence.length < array.length)
+			return false;
+		
+		for (int i = 0; i < sequence.length; i++)
+		{
+			if (array[i] == null && sequence[i] != null)
+				return false;
+			if (!array[i].equals(sequence[i]))
+				return false;
+		}
+		
+		return true;
+	}
+
+	/**
+	 * Checks if an array starts with a sequence of data.
 	 * @param array the array.
 	 * @param sequence the sequence to test.
 	 * @return true if so, false if not.
@@ -423,28 +450,697 @@ public final class ArrayUtils
 	}
 
 	/**
-	 * Checks if an array starts with a sequence of data.
-	 * @param <T> the array type.
-	 * @param array the array.
-	 * @param sequence the sequence to test.
-	 * @return true if so, false if not.
-	 * @see #equals(Object)
-	 * @throws NullPointerException if array or sequence is null.
+	 * Returns if two objects are equal, performing null checking. 
+	 * @param a the first object.
+	 * @param b the second object.
+	 * @return true if equal, false if not.
+	 * @see Object#equals(Object)
 	 */
-	public static <T> boolean startsWith(T[] array, T[] sequence)
+	private static boolean areEqual(Object a, Object b)
 	{
-		if (sequence.length < array.length)
+		if (a == null)
+			return b == null;
+		else if (b == null)
 			return false;
+		else
+			return a.equals(b);
+	}
+
+	/**
+	 * Gathers all objects in an array until it reaches the end or a sentinel value.
+	 * @param <T> the array type.
+	 * @param array the array to read from.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return a list of the fetched values.
+	 */
+	public static <T> List<T> arrayFetchAll(T[] array, T sentinel)
+	{
+		ArrayList<T> out = new ArrayList<>(array.length / 2);
+		for (int i = 0; i < array.length && !areEqual(array[i], sentinel); i++)
+			out.add(array[i]);
+		return out;
+	}
+
+	/**
+	 * Gathers all objects in an array until it reaches the end or a sentinel value.
+	 * @param array the array to read from.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return a list of the fetched values.
+	 */
+	public static List<Byte> arrayFetchAll(byte[] array, byte sentinel)
+	{
+		ArrayList<Byte> out = new ArrayList<>(array.length / 2);
+		for (int i = 0; i < array.length && !areEqual(array[i], sentinel); i++)
+			out.add(array[i]);
+		return out;
+	}
+
+	/**
+	 * Gathers all objects in an array until it reaches the end or a sentinel value.
+	 * @param array the array to read from.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return a list of the fetched values.
+	 */
+	public static List<Short> arrayFetchAll(short[] array, short sentinel)
+	{
+		ArrayList<Short> out = new ArrayList<>(array.length / 2);
+		for (int i = 0; i < array.length && !areEqual(array[i], sentinel); i++)
+			out.add(array[i]);
+		return out;
+	}
+
+	/**
+	 * Gathers all objects in an array until it reaches the end or a sentinel value.
+	 * @param array the array to read from.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return a list of the fetched values.
+	 */
+	public static List<Integer> arrayFetchAll(int[] array, int sentinel)
+	{
+		ArrayList<Integer> out = new ArrayList<>(array.length / 2);
+		for (int i = 0; i < array.length && !areEqual(array[i], sentinel); i++)
+			out.add(array[i]);
+		return out;
+	}
+
+	/**
+	 * Gathers all objects in an array until it reaches the end or a sentinel value.
+	 * @param array the array to read from.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return a list of the fetched values.
+	 */
+	public static List<Float> arrayFetchAll(float[] array, float sentinel)
+	{
+		ArrayList<Float> out = new ArrayList<>(array.length / 2);
+		for (int i = 0; i < array.length && !areEqual(array[i], sentinel); i++)
+			out.add(array[i]);
+		return out;
+	}
+
+	/**
+	 * Gathers all objects in an array until it reaches the end or a sentinel value.
+	 * @param array the array to read from.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return a list of the fetched values.
+	 */
+	public static List<Long> arrayFetchAll(long[] array, long sentinel)
+	{
+		ArrayList<Long> out = new ArrayList<>(array.length / 2);
+		for (int i = 0; i < array.length && !areEqual(array[i], sentinel); i++)
+			out.add(array[i]);
+		return out;
+	}
+
+	/**
+	 * Gathers all objects in an array until it reaches the end or a sentinel value.
+	 * @param array the array to read from.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return a list of the fetched values.
+	 */
+	public static List<Double> arrayFetchAll(double[] array, double sentinel)
+	{
+		ArrayList<Double> out = new ArrayList<>(array.length / 2);
+		for (int i = 0; i < array.length && !areEqual(array[i], sentinel); i++)
+			out.add(array[i]);
+		return out;
+	}
+
+	/**
+	 * Gathers all objects in an array until it reaches the end or a sentinel value.
+	 * @param array the array to read from.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return a list of the fetched values.
+	 */
+	public static List<Boolean> arrayFetchAll(boolean[] array, boolean sentinel)
+	{
+		ArrayList<Boolean> out = new ArrayList<>(array.length / 2);
+		for (int i = 0; i < array.length && !areEqual(array[i], sentinel); i++)
+			out.add(array[i]);
+		return out;
+	}
+
+	/**
+	 * Gathers all objects in an array until it reaches the end or a sentinel value.
+	 * @param array the array to read from.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return a list of the fetched values.
+	 */
+	public static List<Character> arrayFetchAll(char[] array, char sentinel)
+	{
+		ArrayList<Character> out = new ArrayList<>(array.length / 2);
+		for (int i = 0; i < array.length && !areEqual(array[i], sentinel); i++)
+			out.add(array[i]);
+		return out;
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(T[] array, T toAdd, T sentinel)
+	{
+		return arrayAdd(array, toAdd, sentinel, 0);
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @param startIndex the index at which to start the search for the end.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(T[] array, T toAdd, T sentinel, int startIndex)
+	{
+		// Seek to end
+		int i = startIndex;
+		while (i < array.length && !areEqual(array[i], sentinel))
+			i++;
+		if (i >= array.length)
+			return -1;
+		array[i] = toAdd;
+		return i;
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(byte[] array, byte toAdd, byte sentinel)
+	{
+		return arrayAdd(array, toAdd, sentinel, 0);
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @param startIndex the index at which to start the search for the end.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(byte[] array, byte toAdd, byte sentinel, int startIndex)
+	{
+		// Seek to end
+		int i = startIndex;
+		while (i < array.length && !areEqual(array[i], sentinel))
+			i++;
+		if (i >= array.length)
+			return -1;
+		array[i] = toAdd;
+		return i;
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(short[] array, short toAdd, short sentinel)
+	{
+		return arrayAdd(array, toAdd, sentinel, 0);
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @param startIndex the index at which to start the search for the end.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(short[] array, short toAdd, short sentinel, int startIndex)
+	{
+		// Seek to end
+		int i = startIndex;
+		while (i < array.length && !areEqual(array[i], sentinel))
+			i++;
+		if (i >= array.length)
+			return -1;
+		array[i] = toAdd;
+		return i;
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(int[] array, int toAdd, int sentinel)
+	{
+		return arrayAdd(array, toAdd, sentinel, 0);
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @param startIndex the index at which to start the search for the end.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(int[] array, int toAdd, int sentinel, int startIndex)
+	{
+		// Seek to end
+		int i = startIndex;
+		while (i < array.length && !areEqual(array[i], sentinel))
+			i++;
+		if (i >= array.length)
+			return -1;
+		array[i] = toAdd;
+		return i;
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(float[] array, float toAdd, float sentinel)
+	{
+		return arrayAdd(array, toAdd, sentinel, 0);
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @param startIndex the index at which to start the search for the end.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(float[] array, float toAdd, float sentinel, int startIndex)
+	{
+		// Seek to end
+		int i = startIndex;
+		while (i < array.length && !areEqual(array[i], sentinel))
+			i++;
+		if (i >= array.length)
+			return -1;
+		array[i] = toAdd;
+		return i;
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(long[] array, long toAdd, long sentinel)
+	{
+		return arrayAdd(array, toAdd, sentinel, 0);
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @param startIndex the index at which to start the search for the end.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(long[] array, long toAdd, long sentinel, int startIndex)
+	{
+		// Seek to end
+		int i = startIndex;
+		while (i < array.length && !areEqual(array[i], sentinel))
+			i++;
+		if (i >= array.length)
+			return -1;
+		array[i] = toAdd;
+		return i;
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(double[] array, double toAdd, double sentinel)
+	{
+		return arrayAdd(array, toAdd, sentinel, 0);
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @param startIndex the index at which to start the search for the end.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(double[] array, double toAdd, double sentinel, int startIndex)
+	{
+		// Seek to end
+		int i = startIndex;
+		while (i < array.length && !areEqual(array[i], sentinel))
+			i++;
+		if (i >= array.length)
+			return -1;
+		array[i] = toAdd;
+		return i;
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(boolean[] array, boolean toAdd, boolean sentinel)
+	{
+		return arrayAdd(array, toAdd, sentinel, 0);
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @param startIndex the index at which to start the search for the end.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(boolean[] array, boolean toAdd, boolean sentinel, int startIndex)
+	{
+		// Seek to end
+		int i = startIndex;
+		while (i < array.length && !areEqual(array[i], sentinel))
+			i++;
+		if (i >= array.length)
+			return -1;
+		array[i] = toAdd;
+		return i;
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(char[] array, char toAdd, char sentinel)
+	{
+		return arrayAdd(array, toAdd, sentinel, 0);
+	}
+
+	/**
+	 * Adds an object to the end of an array, using a sentinel value as the "end". O(N) complex.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param toAdd the reference to add.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @param startIndex the index at which to start the search for the end.
+	 * @return the index added, or -1 if end was reached without an add.
+	 */
+	public static <T> int arrayAdd(char[] array, char toAdd, char sentinel, int startIndex)
+	{
+		// Seek to end
+		int i = startIndex;
+		while (i < array.length && !areEqual(array[i], sentinel))
+			i++;
+		if (i >= array.length)
+			return -1;
+		array[i] = toAdd;
+		return i;
+	}
+
+	/**
+	 * Removes an object from the an array, using a sentinel value as the "blank" spot. O(N) complex.
+	 * This will shift the contents of the array down one index until a sentinel is reached.
+	 * @param <T> the array type.
+	 * @param array the array to add to.
+	 * @param removeIndex the index to remove.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the value removed, or the sentinel if no removal.
+	 */
+	public static <T> T arrayRemove(T[] array, int removeIndex, T sentinel)
+	{
+		if (removeIndex >= array.length)
+			return sentinel;
+		if (areEqual(array[removeIndex], sentinel))
+			return sentinel;
 		
-		for (int i = 0; i < sequence.length; i++)
+		int i = removeIndex;
+		T out = array[i];
+		while (i < array.length && !areEqual(array[i], sentinel))
 		{
-			if (array[i] == null && sequence[i] != null)
-				return false;
-			if (!array[i].equals(sequence[i]))
-				return false;
+			if (i < array.length - 1)
+				array[i] = array[i + 1];
+			i++;
 		}
+		array[array.length - 1] = sentinel;
+		return out;
+	}
+
+	/**
+	 * Removes an object from the an array, using a sentinel value as the "blank" spot. O(N) complex.
+	 * This will shift the contents of the array down one index until a sentinel is reached.
+	 * @param array the array to add to.
+	 * @param removeIndex the index to remove.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the value removed, or the sentinel if no removal.
+	 */
+	public static byte arrayRemove(byte[] array, int removeIndex, byte sentinel)
+	{
+		if (removeIndex >= array.length)
+			return sentinel;
+		if (areEqual(array[removeIndex], sentinel))
+			return sentinel;
 		
-		return true;
+		int i = removeIndex;
+		byte out = array[i];
+		while (i < array.length && array[i] != sentinel)
+		{
+			if (i < array.length - 1)
+				array[i] = array[i + 1];
+			i++;
+		}
+		array[array.length - 1] = sentinel;
+		return out;
+	}
+
+	/**
+	 * Removes an object from the an array, using a sentinel value as the "blank" spot. O(N) complex.
+	 * This will shift the contents of the array down one index until a sentinel is reached.
+	 * @param array the array to add to.
+	 * @param removeIndex the index to remove.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the value removed, or the sentinel if no removal.
+	 */
+	public static short arrayRemove(short[] array, int removeIndex, short sentinel)
+	{
+		if (removeIndex >= array.length)
+			return sentinel;
+		if (areEqual(array[removeIndex], sentinel))
+			return sentinel;
+		
+		int i = removeIndex;
+		short out = array[i];
+		while (i < array.length && array[i] != sentinel)
+		{
+			if (i < array.length - 1)
+				array[i] = array[i + 1];
+			i++;
+		}
+		array[array.length - 1] = sentinel;
+		return out;
+	}
+
+	/**
+	 * Removes an object from the an array, using a sentinel value as the "blank" spot. O(N) complex.
+	 * This will shift the contents of the array down one index until a sentinel is reached.
+	 * @param array the array to add to.
+	 * @param removeIndex the index to remove.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the value removed, or the sentinel if no removal.
+	 */
+	public static int arrayRemove(int[] array, int removeIndex, int sentinel)
+	{
+		if (removeIndex >= array.length)
+			return sentinel;
+		if (areEqual(array[removeIndex], sentinel))
+			return sentinel;
+		
+		int i = removeIndex;
+		int out = array[i];
+		while (i < array.length && array[i] != sentinel)
+		{
+			if (i < array.length - 1)
+				array[i] = array[i + 1];
+			i++;
+		}
+		array[array.length - 1] = sentinel;
+		return out;
+	}
+
+	/**
+	 * Removes an object from the an array, using a sentinel value as the "blank" spot. O(N) complex.
+	 * This will shift the contents of the array down one index until a sentinel is reached.
+	 * @param array the array to add to.
+	 * @param removeIndex the index to remove.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the value removed, or the sentinel if no removal.
+	 */
+	public static long arrayRemove(long[] array, int removeIndex, long sentinel)
+	{
+		if (removeIndex >= array.length)
+			return sentinel;
+		if (areEqual(array[removeIndex], sentinel))
+			return sentinel;
+		
+		int i = removeIndex;
+		long out = array[i];
+		while (i < array.length && array[i] != sentinel)
+		{
+			if (i < array.length - 1)
+				array[i] = array[i + 1];
+			i++;
+		}
+		array[array.length - 1] = sentinel;
+		return out;
+	}
+
+	/**
+	 * Removes an object from the an array, using a sentinel value as the "blank" spot. O(N) complex.
+	 * This will shift the contents of the array down one index until a sentinel is reached.
+	 * @param array the array to add to.
+	 * @param removeIndex the index to remove.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the value removed, or the sentinel if no removal.
+	 */
+	public static float arrayRemove(float[] array, int removeIndex, float sentinel)
+	{
+		if (removeIndex >= array.length)
+			return sentinel;
+		if (areEqual(array[removeIndex], sentinel))
+			return sentinel;
+		
+		int i = removeIndex;
+		float out = array[i];
+		while (i < array.length && array[i] != sentinel)
+		{
+			if (i < array.length - 1)
+				array[i] = array[i + 1];
+			i++;
+		}
+		array[array.length - 1] = sentinel;
+		return out;
+	}
+
+	/**
+	 * Removes an object from the an array, using a sentinel value as the "blank" spot. O(N) complex.
+	 * This will shift the contents of the array down one index until a sentinel is reached.
+	 * @param array the array to add to.
+	 * @param removeIndex the index to remove.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the value removed, or the sentinel if no removal.
+	 */
+	public static double arrayRemove(double[] array, int removeIndex, double sentinel)
+	{
+		if (removeIndex >= array.length)
+			return sentinel;
+		if (areEqual(array[removeIndex], sentinel))
+			return sentinel;
+		
+		int i = removeIndex;
+		double out = array[i];
+		while (i < array.length && array[i] != sentinel)
+		{
+			if (i < array.length - 1)
+				array[i] = array[i + 1];
+			i++;
+		}
+		array[array.length - 1] = sentinel;
+		return out;
+	}
+
+	/**
+	 * Removes an object from the an array, using a sentinel value as the "blank" spot. O(N) complex.
+	 * This will shift the contents of the array down one index until a sentinel is reached.
+	 * @param array the array to add to.
+	 * @param removeIndex the index to remove.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the value removed, or the sentinel if no removal.
+	 */
+	public static boolean arrayRemove(boolean[] array, int removeIndex, boolean sentinel)
+	{
+		if (removeIndex >= array.length)
+			return sentinel;
+		if (areEqual(array[removeIndex], sentinel))
+			return sentinel;
+		
+		int i = removeIndex;
+		boolean out = array[i];
+		while (i < array.length && array[i] != sentinel)
+		{
+			if (i < array.length - 1)
+				array[i] = array[i + 1];
+			i++;
+		}
+		array[array.length - 1] = sentinel;
+		return out;
+	}
+
+	/**
+	 * Removes an object from the an array, using a sentinel value as the "blank" spot. O(N) complex.
+	 * This will shift the contents of the array down one index until a sentinel is reached.
+	 * @param array the array to add to.
+	 * @param removeIndex the index to remove.
+	 * @param sentinel the sentinel value to use as the end. Can be null. Uses equality.
+	 * @return the value removed, or the sentinel if no removal.
+	 */
+	public static char arrayRemove(char[] array, int removeIndex, char sentinel)
+	{
+		if (removeIndex >= array.length)
+			return sentinel;
+		if (areEqual(array[removeIndex], sentinel))
+			return sentinel;
+		
+		int i = removeIndex;
+		char out = array[i];
+		while (i < array.length && array[i] != sentinel)
+		{
+			if (i < array.length - 1)
+				array[i] = array[i + 1];
+			i++;
+		}
+		array[array.length - 1] = sentinel;
+		return out;
 	}
 
 	/**
@@ -527,6 +1223,22 @@ public final class ArrayUtils
 			return addSorted(array, object, start, comparator);
 		else
 			return -1;
+	}
+
+	/**
+	 * Creates a shallow copy of an array, performs an operation on the copy
+	 * (usually an in-place operation) and returns the copy.
+	 * @param <T> the array type.
+	 * @param arr the input array.
+	 * @param operation the operation to perform. Input is a copy of <code>arr</code>.
+	 * @return a copy of the provided array, post-operation.
+	 * @see Arrays#copyOf(T[], int)
+	 */
+	public static <T> T[] copyAnd(T[] arr, Consumer<T[]> operation)
+	{
+		T[] copy = Arrays.copyOf(arr, arr.length);
+		operation.accept(copy);
+		return copy;
 	}
 
 	/**
@@ -645,22 +1357,6 @@ public final class ArrayUtils
 	public static char[] copyAnd(char[] arr, Consumer<char[]> operation)
 	{
 		char[] copy = Arrays.copyOf(arr, arr.length);
-		operation.accept(copy);
-		return copy;
-	}
-	
-	/**
-	 * Creates a shallow copy of an array, performs an operation on the copy
-	 * (usually an in-place operation) and returns the copy.
-	 * @param <T> the array type.
-	 * @param arr the input array.
-	 * @param operation the operation to perform. Input is a copy of <code>arr</code>.
-	 * @return a copy of the provided array, post-operation.
-	 * @see Arrays#copyOf(T[], int)
-	 */
-	public static <T> T[] copyAnd(T[] arr, Consumer<T[]> operation)
-	{
-		T[] copy = Arrays.copyOf(arr, arr.length);
 		operation.accept(copy);
 		return copy;
 	}

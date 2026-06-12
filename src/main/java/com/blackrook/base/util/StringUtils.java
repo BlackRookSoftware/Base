@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Black Rook Software
+ * Copyright (c) 2019-2026 Black Rook Software
  * This program and the accompanying materials are made available under 
  * the terms of the MIT License, which accompanies this distribution.
  ******************************************************************************/
@@ -334,6 +334,41 @@ public final class StringUtils
 		return sb.toString();
 	}
 
+	/**
+	 * Pads a positive value with a padding character (in this case, <code>'0'</code>) until it fits a number of digits.
+	 * For example, <code>pad(7, 3)</code> returns <code>"007"</code>.
+	 * @param value the value.
+	 * @param digits the amount of digits.
+	 * @return a padded string.
+	 */
+	public static String pad(int value, int digits)
+	{
+		return pad(value, digits, '0');
+	}
+	
+	/**
+	 * Pads a positive value with a padding character until it fits a number of digits.
+	 * For example, <code>pad(7, 3, '0')</code> returns <code>"007"</code>.
+	 * @param value the value.
+	 * @param digits the amount of digits.
+	 * @param padChar the padding character.
+	 * @return a padded string.
+	 */
+	public static String pad(int value, int digits, char padChar)
+	{
+		String out = "";
+		while (value > 0)
+		{
+			int digit = value % 10;
+			out = String.valueOf(digit) + out;
+			value /= 10;
+			digits--;
+		}
+		while (digits-- > 0)
+			out = padChar + out;
+		return out;
+	}
+	
 	/**
 	 * Prints a message out to standard out, word-wrapped
 	 * to a set column width (in characters). The width cannot be

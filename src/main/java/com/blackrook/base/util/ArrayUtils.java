@@ -1530,4 +1530,212 @@ public final class ArrayUtils
 		return sb.toString();
 	}
 	
+	/**
+	 * Auto-boxes an array of primitives to their object equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static Boolean[] box(boolean ... values)
+	{
+		Boolean[] out = new Boolean[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Auto-boxes an array of primitives to their object equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static Byte[] box(byte ... values)
+	{
+		Byte[] out = new Byte[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Auto-boxes an array of primitives to their object equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static Short[] box(short ... values)
+	{
+		Short[] out = new Short[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Auto-boxes an array of primitives to their object equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static Integer[] box(int ... values)
+	{
+		Integer[] out = new Integer[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Auto-boxes an array of primitives to their object equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static Long[] box(long ... values)
+	{
+		Long[] out = new Long[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Auto-boxes an array of primitives to their object equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static Float[] box(float ... values)
+	{
+		Float[] out = new Float[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Auto-boxes an array of primitives to their object equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static Double[] box(double ... values)
+	{
+		Double[] out = new Double[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Auto-boxes an array of primitives to their object equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static Character[] box(char ... values)
+	{
+		Character[] out = new Character[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Unboxes an array of objects to their primitive equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static boolean[] unbox(Boolean ... values)
+	{
+		boolean[] out = new boolean[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Unboxes an array of objects to their primitive equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static byte[] unbox(Byte ... values)
+	{
+		byte[] out = new byte[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Unboxes an array of objects to their primitive equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static short[] unbox(Short ... values)
+	{
+		short[] out = new short[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Unboxes an array of objects to their primitive equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static int[] unbox(Integer ... values)
+	{
+		int[] out = new int[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Unboxes an array of objects to their primitive equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static long[] unbox(Long ... values)
+	{
+		long[] out = new long[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Unboxes an array of objects to their primitive equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static float[] unbox(Float ... values)
+	{
+		float[] out = new float[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Unboxes an array of objects to their primitive equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static double[] unbox(Double ... values)
+	{
+		double[] out = new double[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
+	/**
+	 * Unboxes an array of objects to their primitive equivalents.
+	 * @param values the input values.
+	 * @return the resultant array.
+	 */
+	public static char[] unbox(Character ... values)
+	{
+		char[] out = new char[values.length];
+		for (int i = 0; i < out.length; i++)
+			out[i] = values[i];
+		return out;
+	}
+	
 }

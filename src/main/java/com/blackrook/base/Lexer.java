@@ -174,6 +174,99 @@ public class Lexer
 	{
 		readerStack.push(macro, name, in);
 	}
+
+	/**
+	 * Gets the next token via reading until whitespace or end-of-stream/lexer is reached.
+	 * Token type, if characters are read, will be {@link Kernel#TYPE_SEQUENCE}.
+	 * If there are no tokens left to read, this will return null.
+	 * This method is NOT thread-safe!
+	 * @return the next sequence token, or null if no more tokens to read.
+	 * @throws IOException if a token cannot be read by the underlying Reader.
+	 */
+	public Token nextSequence() throws IOException
+	{
+		int lineNumber = -1;
+		int charIndex = 0;
+		boolean breakloop = false;
+		
+		state = Kernel.TYPE_UNKNOWN;
+		
+		while (!breakloop)
+		{
+			char c = readChar();
+
+			switch (state)
+			{
+				case Kernel.TYPE_UNKNOWN:
+				{
+					if (isLexerEnd(c))
+					{
+						state = Kernel.TYPE_END_OF_LEXER;
+						breakloop = true;
+					}
+					else if (isStreamEnd(c))
+					{
+						if (kernel.willEmitStreamBreak())
+						{
+							state = Kernel.TYPE_END_OF_STREAM;
+							charIndex = readerStack.getCurrentLineCharacterIndex();
+							lineNumber = readerStack.getCurrentLineNumber();
+							breakloop = true;
+						}
+						close(readerStack.pop());
+					}
+					else if (isWhitespace(c))
+					{
+						// eat whitespace
+					}
+					else
+					{
+						saveChar(c);
+						state = Kernel.TYPE_SEQUENCE;
+					}
+				}
+				break;
+
+				case Kernel.TYPE_SEQUENCE:
+				{
+					if (isLexerEnd(c))
+					{
+						setDelimBreak(c);
+						breakloop = true;
+					}
+					else if (isStreamEnd(c))
+					{
+						setDelimBreak(c);
+						breakloop = true;
+					}
+					else if (isWhitespace(c))
+					{
+						setDelimBreak(c);
+						breakloop = true;
+					}
+					else
+					{
+						saveChar(c);
+					}
+				}
+				break;
+			}
+			
+		}
+		
+		// send token.
+		int type = state;
+		String lexeme = getCurrentLexeme();
+		clearCurrentLexeme();
+		
+		Token out = null;
+		String streamName = readerStack.getCurrentStreamName();
+		out = new Token(streamName, type, lexeme, lineNumber, charIndex);
+		
+		if (DEBUG)
+			System.out.println(out);
+		return out;
+	}
 	
 	/**
 	 * Gets the next token.
@@ -1926,6 +2019,8 @@ public class Lexer
 		public static final int TYPE_LINE_COMMENT = 			-11;
 		/** Reserved token type: String. */
 		public static final int TYPE_STRING = 					-12;
+		/** Reserved token type: Sequence. */
+		public static final int TYPE_SEQUENCE = 				-13;
 		
 		/** Reserved token type: Raw String (never returned). */
 		private static final int TYPE_RAWSTRING = 				-16;
@@ -2411,6 +2506,20 @@ public class Lexer
 		{
 			try {
 				currentToken = lexer.nextToken();
+			} catch (IOException e) {
+				throw new Parser.Exception(e.getMessage(), e);
+			}
+		}
+		
+		/**
+		 * Reads and sets the current token to the next token.
+		 * If the current token is null, it is the end of the Lexer's stream.
+		 * @throws Parser.Exception if the next token can't be read. 
+		 */
+		protected void nextSequence()
+		{
+			try {
+				currentToken = lexer.nextSequence();
 			} catch (IOException e) {
 				throw new Parser.Exception(e.getMessage(), e);
 			}

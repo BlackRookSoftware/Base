@@ -209,6 +209,78 @@ public final class MathUtils
 	}
 
 	/**
+	 * Converts a fixed-point integer value to a double.
+	 * @param fractionBits the fraction/mantissa bits of the value.
+	 * @param value the value to convert.
+	 * @return the double value.
+	 */
+	public static double fixedToDouble(final int fractionBits, int value)
+	{
+		final int baseBits = 32 - fractionBits;
+		final int BASE_MASK = 0xffffffff >>> fractionBits;
+		final int FRACTION_MASK = 0xffffffff >>> baseBits;
+
+		int b = (value & (BASE_MASK << fractionBits)) >> fractionBits;
+		int m = (value & FRACTION_MASK);
+		
+		return (double)b + ((double)m / (1 << fractionBits)); 
+	}
+	
+	/**
+	 * Converts a fixed-point integer value to a float.
+	 * @param fractionBits the fraction/mantissa bits of the value.
+	 * @param value the value to convert.
+	 * @return the float value.
+	 */
+	public static float fixedToFloat(final int fractionBits, int value)
+	{
+		final int baseBits = 32 - fractionBits;
+		final int BASE_MASK = 0xffffffff >>> fractionBits;
+		final int FRACTION_MASK = 0xffffffff >>> baseBits;
+
+		int b = (value & (BASE_MASK << fractionBits)) >> fractionBits;
+		int m = (value & FRACTION_MASK);
+		
+		return (float)b + ((float)m / (1 << fractionBits)); 
+	}
+	
+	/**
+	 * Converts a fixed-point integer value to a double.
+	 * @param fractionBits the fraction/mantissa bits of the value.
+	 * @param value the value to convert.
+	 * @return the integer value.
+	 */
+	public static int doubleToFixed(final int fractionBits, double value)
+	{
+		final int baseBits = 32 - fractionBits;
+		final int BASE_MASK = 0xffffffff >>> fractionBits;
+		final int FRACTION_MASK = 0xffffffff >>> baseBits;
+
+		int b = BASE_MASK & ((int)value);
+		int m = (int)((value % 1.0) * (1 << fractionBits)) & FRACTION_MASK;
+		
+		return (b << fractionBits) | m;
+	}
+	
+	/**
+	 * Converts a fixed-point integer value to a double.
+	 * @param fractionBits the fraction/mantissa bits of the value.
+	 * @param value the value to convert.
+	 * @return the integer value.
+	 */
+	public static int floatToFixed(final int fractionBits, float value)
+	{
+		final int baseBits = 32 - fractionBits;
+		final int BASE_MASK = 0xffffffff >>> fractionBits;
+		final int FRACTION_MASK = 0xffffffff >>> baseBits;
+
+		int b = BASE_MASK & ((int)value);
+		int m = (int)((value % 1.0) * (1 << fractionBits)) & FRACTION_MASK;
+		
+		return (b << fractionBits) | m;
+	}
+	
+	/**
 	 * Converts radians to degrees.
 	 * @param radians the input angle in radians.
 	 * @return the resultant angle in degrees.

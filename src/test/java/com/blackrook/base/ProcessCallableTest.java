@@ -11,7 +11,8 @@ public final class ProcessCallableTest
 {
 	public static void main(String[] args) throws Exception
 	{
-		ProcessCallable.cmd("dir", "/b", "/o", "/s").setWorkingDirectory(new File(".")).inheritOut().call();
+		ProcessCallable.cmd("dir", "*.*", "/b", "/s").setWorkingDirectory(new File("."))
+			.pipeOutTo(ProcessCallable.cmd("sort").setOut(System.out)).call();
 	}
 
 }
